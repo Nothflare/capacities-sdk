@@ -34,37 +34,10 @@ _BASE_INSTRUCTIONS = """
 Capacities is a graph-based Personal Knowledge Management (PKM) app. Core concepts:
 
 - **Object**: The fundamental unit. Everything is an object - notes, pages, people, books, tasks.
-- **Structure**: Object type/schema. Built-in: RootPage, RootTask, RootDailyNote, RootTag. Custom types have UUID IDs.
-- **Links**: Objects connect to each other via inline links or embedded blocks. Use backlinks to see what references an object.
-- **Collections**: Groups of objects (like folders/databases).
+- **Structure**: Object type/schema. Built-in types: RootPage, RootTask, RootDailyNote, RootTag. Custom types have UUID IDs.
+- **Links**: Objects connect via inline links or embedded blocks. Backlinks show what references an object.
+- **Collections**: Groups of objects (like databases/folders).
 - **Content**: Markdown auto-parsed into blocks (headings, code, lists, quotes).
-
-## Tool Guide
-
-**Explore (safe, read-only):**
-- `capacities_objects(action="list")` - See all objects (add structure_id to filter by type)
-- `capacities_objects(action="search", query="...")` - Find by title
-- `capacities_objects(action="get", object_id="...")` - Read full content
-- `capacities_links(action="get", object_id="...")` - See what an object links to
-- `capacities_links(action="backlinks", object_id="...")` - See what links TO this object
-- `capacities_space(action="info")` - List all structures (object types) in the space
-- `capacities_space(action="graph", object_id="...")` - Trace connections from an object
-
-**Create & Modify:**
-- `capacities_objects(action="create", structure_id="...", title="...", content="...")` - Content is markdown
-- `capacities_objects(action="update", object_id="...", title/content/description="...")`
-- `capacities_objects(action="delete/restore", object_id="...")` - Delete moves to trash
-
-**Tasks:**
-- `capacities_tasks(action="pending/overdue")` - Quick status check
-- `capacities_tasks(action="create", title="...", due_date="2025-01-20", priority="high/medium/low")`
-- `capacities_tasks(action="complete/uncomplete", task_id="...")`
-
-**Daily Notes:**
-- `capacities_daily(action="note", text="...")` - Append to today's daily note
-- `capacities_daily(action="weblink", url="...")` - Save a URL
-
-**Bulk & Export:** For batch operations and backups - use when working with many objects.
 """
 
 if DEFAULT_SPACE_ID:
@@ -73,13 +46,13 @@ if DEFAULT_SPACE_ID:
 
 Default space: `{DEFAULT_SPACE_ID}` (auto-used, no need to specify space_id)
 
-Start exploring: `capacities_objects(action="list", limit=20)` or `capacities_space(action="info")`
+Start exploring with capacities_space or capacities_objects.
 """
 else:
     INSTRUCTIONS = _BASE_INSTRUCTIONS + """
 ## Configuration
 
-No default space configured. First: `capacities_space(action="list")` to see available spaces, then pass space_id to other tools.
+No default space. First call capacities_space(action="list") to get space_id.
 """
 
 mcp = FastMCP(name="capacities", instructions=INSTRUCTIONS)
@@ -149,7 +122,20 @@ def capacities_objects(
     limit: int = 50,
     client: CapacitiesClient = Depends(get_client),
 ) -> str:
-    """Object CRUD. Actions: create, get, get_many, update, delete, restore, list, search, search_content"""
+    """
+    CRUD operations on objects (notes, pages, etc).
+
+    Actions:
+    - list: See all objects. Add structure_id to filter by type (e.g., "RootPage", "RootTask").
+    - get: Read full content of one object by object_id.
+    - get_many: Read multiple objects by object_ids list.
+    - search: Find objects by title matching query.
+    - search_content: Full-text search across all content.
+    - create: New object. Requires structure_id and title. content is markdown (auto-parsed).
+    - update: Modify object_id. Pass only fields to change.
+    - delete: Move to trash (recoverable).
+    - restore: Recover from trash.
+    """
     try:
         if action == "get":
             obj = client.get_object(object_id)
@@ -211,7 +197,19 @@ def capacities_tasks(
     tags: Optional[List[str]] = None,
     client: CapacitiesClient = Depends(get_client),
 ) -> str:
-    """Task management. Actions: create, list, pending, overdue, complete, uncomplete, update, delete"""
+    """
+    Task management with due dates and priorities.
+
+    Actions:
+    - list: All tasks. Filter with status (not-started/next-up/done) or priority (high/medium/low).
+    - pending: Quick view of incomplete tasks.
+    - overdue: Tasks past their due date.
+    - create: New task. title required. Optional: due_date (YYYY-MM-DD), priority, notes.
+    - complete: Mark task_id as done.
+    - uncomplete: Reopen a completed task.
+    - update: Change any task field by task_id.
+    - delete: Move task to trash.
+    """
     try:
         sid = get_space_id(space_id)
         pri = TaskPriority(priority) if priority else None
@@ -262,7 +260,14 @@ def capacities_space(
     depth: int = 2,
     client: CapacitiesClient = Depends(get_client),
 ) -> str:
-    """Space info. Actions: list, info, graph"""
+    """
+    Space info and graph traversal.
+
+    Actions:
+    - list: Show all available spaces (useful if no default configured).
+    - info: List all structures (object types) in the space with their IDs.
+    - graph: Trace connections from object_id up to depth levels (1-3). Shows linked objects.
+    """
     try:
         if action == "list":
             spaces = client.get_spaces()
@@ -301,7 +306,13 @@ def capacities_daily(
     notes: Optional[str] = None,
     client: CapacitiesClient = Depends(get_client),
 ) -> str:
-    """Daily notes and weblinks. Actions: note, weblink"""
+    """
+    Quick capture to daily notes and weblinks.
+
+    Actions:
+    - note: Append text (markdown) to today's daily note. Set no_timestamp=true to skip timestamp.
+    - weblink: Save a URL. Optional: title, description, tags, notes.
+    """
     try:
         sid = get_space_id(space_id)
 
@@ -326,7 +337,14 @@ def capacities_collections(
     collection_id: Optional[str] = None,
     client: CapacitiesClient = Depends(get_client),
 ) -> str:
-    """Collection membership. Actions: add, remove, list"""
+    """
+    Manage collection (database) membership.
+
+    Actions:
+    - list: Show all objects in a collection by collection_id.
+    - add: Add object_id to collection_id.
+    - remove: Remove object_id from collection_id.
+    """
     try:
         sid = get_space_id(space_id)
 
@@ -358,7 +376,15 @@ def capacities_links(
     as_block: bool = False,
     client: CapacitiesClient = Depends(get_client),
 ) -> str:
-    """Link operations. Actions: get, backlinks, add, get_linked"""
+    """
+    Explore and create links between objects.
+
+    Actions:
+    - get: See what object_id links TO (outgoing links).
+    - get_linked: Get full details of linked objects.
+    - backlinks: See what links TO object_id (incoming links). Great for discovering connections.
+    - add: Create link from source_object_id to target_object_id. Optional display_text. Set as_block=true for embed.
+    """
     try:
         if action == "get":
             links = client.get_links(object_id)
@@ -393,7 +419,15 @@ def capacities_bulk(
     title_prefix: str = "Copy of ",
     client: CapacitiesClient = Depends(get_client),
 ) -> str:
-    """Bulk operations. Actions: create, update, delete, clone"""
+    """
+    Batch operations on multiple objects at once.
+
+    Actions:
+    - create: Create many objects. objects=[{structure_id, title, content?, description?}, ...]
+    - update: Update many. updates=[{object_id, title?, content?, description?}, ...]
+    - delete: Delete multiple by object_ids list.
+    - clone: Duplicate objects with new IDs. Optional title_prefix (default "Copy of ").
+    """
     try:
         sid = get_space_id(space_id)
 
@@ -429,7 +463,14 @@ def capacities_export(
     skip_existing: bool = True,
     client: CapacitiesClient = Depends(get_client),
 ) -> str:
-    """Export/import. Actions: space_json, markdown, import_json"""
+    """
+    Export and import for backup/migration.
+
+    Actions:
+    - space_json: Export entire space to JSON. Set include_content=false for metadata only.
+    - markdown: Export objects as markdown files. Optional object_ids to limit scope.
+    - import_json: Restore from export_data JSON. create_new_ids=true generates fresh IDs.
+    """
     try:
         sid = get_space_id(space_id)
 
