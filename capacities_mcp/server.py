@@ -28,14 +28,59 @@ AUTH_TOKEN = os.environ.get("CAPACITIES_AUTH_TOKEN")
 DEFAULT_SPACE_ID = os.environ.get("CAPACITIES_SPACE_ID")
 
 # Build server instructions based on configuration
+_BASE_INSTRUCTIONS = """
+## What is Capacities?
+
+Capacities is a graph-based Personal Knowledge Management (PKM) app. Core concepts:
+
+- **Object**: The fundamental unit. Everything is an object - notes, pages, people, books, tasks.
+- **Structure**: Object type/schema. Built-in: RootPage, RootTask, RootDailyNote, RootTag. Custom types have UUID IDs.
+- **Links**: Objects connect to each other via inline links or embedded blocks. Use backlinks to see what references an object.
+- **Collections**: Groups of objects (like folders/databases).
+- **Content**: Markdown auto-parsed into blocks (headings, code, lists, quotes).
+
+## Tool Guide
+
+**Explore (safe, read-only):**
+- `capacities_objects(action="list")` - See all objects (add structure_id to filter by type)
+- `capacities_objects(action="search", query="...")` - Find by title
+- `capacities_objects(action="get", object_id="...")` - Read full content
+- `capacities_links(action="get", object_id="...")` - See what an object links to
+- `capacities_links(action="backlinks", object_id="...")` - See what links TO this object
+- `capacities_space(action="info")` - List all structures (object types) in the space
+- `capacities_space(action="graph", object_id="...")` - Trace connections from an object
+
+**Create & Modify:**
+- `capacities_objects(action="create", structure_id="...", title="...", content="...")` - Content is markdown
+- `capacities_objects(action="update", object_id="...", title/content/description="...")`
+- `capacities_objects(action="delete/restore", object_id="...")` - Delete moves to trash
+
+**Tasks:**
+- `capacities_tasks(action="pending/overdue")` - Quick status check
+- `capacities_tasks(action="create", title="...", due_date="2025-01-20", priority="high/medium/low")`
+- `capacities_tasks(action="complete/uncomplete", task_id="...")`
+
+**Daily Notes:**
+- `capacities_daily(action="note", text="...")` - Append to today's daily note
+- `capacities_daily(action="weblink", url="...")` - Save a URL
+
+**Bulk & Export:** For batch operations and backups - use when working with many objects.
+"""
+
 if DEFAULT_SPACE_ID:
-    INSTRUCTIONS = f"""Capacities.io MCP Server - Full CRUD access to your knowledge base.
+    INSTRUCTIONS = _BASE_INSTRUCTIONS + f"""
+## Configuration
 
-CONFIGURED: Default space_id is `{DEFAULT_SPACE_ID}`. You don't need to specify space_id in tool calls."""
+Default space: `{DEFAULT_SPACE_ID}` (auto-used, no need to specify space_id)
+
+Start exploring: `capacities_objects(action="list", limit=20)` or `capacities_space(action="info")`
+"""
 else:
-    INSTRUCTIONS = """Capacities.io MCP Server - Full CRUD access to your knowledge base.
+    INSTRUCTIONS = _BASE_INSTRUCTIONS + """
+## Configuration
 
-NOT CONFIGURED: No default space_id. First call capacities_space(action="list") to get available spaces."""
+No default space configured. First: `capacities_space(action="list")` to see available spaces, then pass space_id to other tools.
+"""
 
 mcp = FastMCP(name="capacities", instructions=INSTRUCTIONS)
 
