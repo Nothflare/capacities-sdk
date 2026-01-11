@@ -13,7 +13,7 @@ Unofficial Python SDK and MCP server for [Capacities.io](https://capacities.io) 
 - **Bulk Operations** - Create, update, delete, clone multiple objects efficiently
 - **Export/Import** - Backup to JSON, export to Markdown, restore from backup
 - **Graph Traversal** - Trace object connections (1-3 levels deep)
-- **MCP Server** - 35 tools for AI agent integration
+- **MCP Server** - 8 action-based tools for AI agent integration
 
 ## Installation
 
@@ -308,7 +308,7 @@ print(f"Total connected: {summary['total_nodes']}")
 
 ## MCP Server
 
-The MCP server exposes all SDK functionality to AI agents via **35 tools**.
+The MCP server exposes all SDK functionality to AI agents via **8 action-based tools**.
 
 ### Setup for Claude Desktop
 
@@ -330,72 +330,41 @@ Add to your `claude_desktop_config.json`:
 
 ### Available MCP Tools
 
-#### Read Operations (7 tools)
-| Tool | Description |
-|------|-------------|
-| `capacities_list_spaces` | List all your spaces |
-| `capacities_get_space_info` | Get structures and collections |
-| `capacities_list_objects` | List objects (with optional type filter) |
-| `capacities_get_object` | Get single object with full content |
-| `capacities_get_objects` | Get multiple objects by IDs |
-| `capacities_search` | Search objects by title |
-| `capacities_trace_graph` | Trace object connections |
+| Tool | Actions | Description |
+|------|---------|-------------|
+| `capacities_objects` | create, get, get_many, update, delete, restore, list, search, search_content | Object CRUD operations |
+| `capacities_tasks` | create, list, pending, overdue, complete, uncomplete, update, delete | Task management |
+| `capacities_space` | list, info, graph | Space info and navigation |
+| `capacities_daily` | note, weblink | Daily notes and weblinks |
+| `capacities_collections` | add, remove, list | Collection membership |
+| `capacities_links` | get, backlinks, add, get_linked | Link operations |
+| `capacities_bulk` | create, update, delete, clone | Bulk operations |
+| `capacities_export` | space_json, markdown, import_json | Export/import |
 
-#### Write Operations (6 tools)
-| Tool | Description |
-|------|-------------|
-| `capacities_create_object` | Create object with markdown content |
-| `capacities_update_object` | Update object (markdown auto-parsed) |
-| `capacities_delete_object` | Delete object (moves to trash) |
-| `capacities_restore_object` | Restore from trash |
-| `capacities_save_weblink` | Save a URL |
-| `capacities_add_to_daily_note` | Add to today's daily note |
+### Example Usage
 
-#### Task Operations (7 tools)
-| Tool | Description |
-|------|-------------|
-| `capacities_create_task` | Create task with due date/priority |
-| `capacities_list_tasks` | List tasks with filters |
-| `capacities_get_pending_tasks` | Get non-completed tasks |
-| `capacities_get_overdue_tasks` | Get overdue tasks |
-| `capacities_complete_task` | Mark task completed |
-| `capacities_uncomplete_task` | Mark task not completed |
-| `capacities_update_task` | Update task fields |
+```
+# List all spaces
+capacities_space(action="list")
 
-#### Collection Operations (3 tools)
-| Tool | Description |
-|------|-------------|
-| `capacities_add_to_collection` | Add object to collection |
-| `capacities_remove_from_collection` | Remove from collection |
-| `capacities_get_collection_objects` | Get collection contents |
+# Get space structures
+capacities_space(action="info", space_id="...")
 
-#### Search (1 tool)
-| Tool | Description |
-|------|-------------|
-| `capacities_search_content` | Full-text content search |
+# Create an object
+capacities_objects(action="create", space_id="...", structure_id="...", title="My Note", content="# Hello")
 
-#### Link Operations (4 tools)
-| Tool | Description |
-|------|-------------|
-| `capacities_get_links` | Get links from object |
-| `capacities_get_backlinks` | Find what links to object |
-| `capacities_add_link` | Create link between objects |
-| `capacities_get_linked_objects` | Get linked object details |
+# Create a task
+capacities_tasks(action="create", space_id="...", title="Review PR", priority="high", due_date="2025-01-20")
 
-#### Bulk Operations (4 tools)
-| Tool | Description |
-|------|-------------|
-| `capacities_bulk_create` | Create multiple objects at once |
-| `capacities_bulk_update` | Update multiple objects at once |
-| `capacities_bulk_delete` | Delete multiple objects |
-| `capacities_clone_objects` | Clone objects with new IDs |
+# Complete a task
+capacities_tasks(action="complete", space_id="...", task_id="...")
 
-#### Export/Import (3 tools)
-| Tool | Description |
-|------|-------------|
-| `capacities_export_space` | Export space to JSON |
-| `capacities_export_markdown` | Export objects as markdown |
-| `capacities_import_json` | Import from JSON backup |
+# Add to daily note
+capacities_daily(action="note", space_id="...", text="Meeting notes...")
+
+# Bulk create
+capacities_bulk(action="create", space_id="...", objects=[...])
+```
 
 ## Object Model
 
@@ -468,19 +437,17 @@ python capacities_sdk/test_bulk_export.py
 
 ## SDK Summary
 
-| Category | SDK Methods | MCP Tools |
-|----------|-------------|-----------|
-| Read | 4 | 7 |
-| Write | 4 | 6 |
-| Tasks | 12 | 7 |
-| Collections | 4 | 3 |
-| Search | 2 | 1 |
-| Links | 4 | 4 |
-| Graph | 2 | 1 |
-| Bulk | 5 | 4 |
-| Export | 3 | 3 |
-| Official | 4 | - |
-| **Total** | **44** | **35** |
+| Category | SDK Methods | MCP Tool |
+|----------|-------------|----------|
+| Objects | 11 | `capacities_objects` (9 actions) |
+| Tasks | 12 | `capacities_tasks` (8 actions) |
+| Space | 3 | `capacities_space` (3 actions) |
+| Daily | 2 | `capacities_daily` (2 actions) |
+| Collections | 4 | `capacities_collections` (3 actions) |
+| Links | 4 | `capacities_links` (4 actions) |
+| Bulk | 5 | `capacities_bulk` (4 actions) |
+| Export | 3 | `capacities_export` (3 actions) |
+| **Total** | **44** | **8 tools, 36 actions** |
 
 ## License
 
