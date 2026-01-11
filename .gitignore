@@ -5,6 +5,7 @@ nul
 .secrets.env
 secrets.env
 .env
+.mcp.json
 
 # Python
 __pycache__/

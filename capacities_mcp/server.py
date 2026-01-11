@@ -31,33 +31,11 @@ DEFAULT_SPACE_ID = os.environ.get("CAPACITIES_SPACE_ID")
 if DEFAULT_SPACE_ID:
     INSTRUCTIONS = f"""Capacities.io MCP Server - Full CRUD access to your knowledge base.
 
-CONFIGURED: Default space_id is set to `{DEFAULT_SPACE_ID}`.
-You don't need to specify space_id in tool calls - it will be used automatically.
-
-8 Tools Available:
-- capacities_objects: create, get, get_many, update, delete, restore, list, search, search_content
-- capacities_tasks: create, list, pending, overdue, complete, uncomplete, update, delete
-- capacities_space: list, info, graph
-- capacities_daily: note, weblink
-- capacities_collections: add, remove, list
-- capacities_links: get, backlinks, add, get_linked
-- capacities_bulk: create, update, delete, clone
-- capacities_export: space_json, markdown, import_json"""
+CONFIGURED: Default space_id is `{DEFAULT_SPACE_ID}`. You don't need to specify space_id in tool calls."""
 else:
     INSTRUCTIONS = """Capacities.io MCP Server - Full CRUD access to your knowledge base.
 
-NOT CONFIGURED: No default space_id set.
-First call capacities_space(action="list") to get available spaces, then use the space_id in other calls.
-
-8 Tools Available:
-- capacities_objects: create, get, get_many, update, delete, restore, list, search, search_content
-- capacities_tasks: create, list, pending, overdue, complete, uncomplete, update, delete
-- capacities_space: list, info, graph
-- capacities_daily: note, weblink
-- capacities_collections: add, remove, list
-- capacities_links: get, backlinks, add, get_linked
-- capacities_bulk: create, update, delete, clone
-- capacities_export: space_json, markdown, import_json"""
+NOT CONFIGURED: No default space_id. First call capacities_space(action="list") to get available spaces."""
 
 mcp = FastMCP(name="capacities", instructions=INSTRUCTIONS)
 
