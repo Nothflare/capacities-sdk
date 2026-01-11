@@ -321,12 +321,15 @@ Add to your `claude_desktop_config.json`:
       "command": "python",
       "args": ["-m", "capacities_mcp.server"],
       "env": {
-        "CAPACITIES_AUTH_TOKEN": "your-token-here"
+        "CAPACITIES_AUTH_TOKEN": "your-token-here",
+        "CAPACITIES_SPACE_ID": "your-space-uuid (optional - auto-fills space_id in all tools)"
       }
     }
   }
 }
 ```
+
+**Tip:** Set `CAPACITIES_SPACE_ID` if you only have one space - then you never need to specify `space_id` in tool calls.
 
 ### Available MCP Tools
 
