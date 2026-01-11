@@ -116,6 +116,8 @@ def capacities_objects(
     structure_id: Optional[str] = None,
     title: Optional[str] = None,
     content: Optional[str] = None,
+    old_string: Optional[str] = None,
+    new_string: Optional[str] = None,
     description: Optional[str] = None,
     tags: Optional[List[str]] = None,
     query: Optional[str] = None,
@@ -132,7 +134,7 @@ def capacities_objects(
     - search: Find objects by title matching query.
     - search_content: Full-text search across all content.
     - create: New object. Requires structure_id and title. content is markdown (auto-parsed).
-    - update: Modify object_id. Pass only fields to change.
+    - update: Modify object_id. For content edits use old_string/new_string (like find-replace). Or pass content to replace all.
     - delete: Move to trash (recoverable).
     - restore: Recover from trash.
     """
@@ -152,7 +154,17 @@ def capacities_objects(
             return f"Created!\n\n{format_object(obj)}"
 
         if action == "update":
-            obj = client.update_object(sid, object_id, title, content, description, tags)
+            # If old_string/new_string provided, do find-replace on content
+            final_content = content
+            if old_string is not None:
+                obj = client.get_object(object_id)
+                if not obj:
+                    return f"Not found: {object_id}"
+                current_content = obj.get_content_text() or ""
+                if old_string not in current_content:
+                    return f"Error: old_string not found in content. Use get first to see current content."
+                final_content = current_content.replace(old_string, new_string or "", 1)
+            obj = client.update_object(sid, object_id, title, final_content, description, tags)
             return f"Updated!\n\n{format_object(obj)}"
 
         if action == "delete":
