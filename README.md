@@ -5,6 +5,7 @@ Unofficial Python SDK and MCP server for [Capacities.io](https://capacities.io) 
 ## Features
 
 - **Full CRUD Operations** - Create, read, update, delete any object
+- **Find-Replace Editing** - Update content with old_string/new_string (like Edit tool)
 - **Task Management** - Create tasks with due dates, priorities, completion tracking
 - **Markdown Auto-Parsing** - Content automatically converts to headings, code blocks, lists, quotes
 - **Link Management** - Create inline links, entity embeds, find backlinks
@@ -13,7 +14,7 @@ Unofficial Python SDK and MCP server for [Capacities.io](https://capacities.io) 
 - **Bulk Operations** - Create, update, delete, clone multiple objects efficiently
 - **Export/Import** - Backup to JSON, export to Markdown, restore from backup
 - **Graph Traversal** - Trace object connections (1-3 levels deep)
-- **MCP Server** - 8 action-based tools for AI agent integration
+- **MCP Server** - 8 action-based tools with FastMCP, auto space_id support
 
 ## Installation
 
@@ -346,27 +347,33 @@ Add to your `claude_desktop_config.json`:
 
 ### Example Usage
 
-```
-# List all spaces
+```python
+# List all spaces (if CAPACITIES_SPACE_ID not set)
 capacities_space(action="list")
 
-# Get space structures
-capacities_space(action="info", space_id="...")
+# Get space structures (object types)
+capacities_space(action="info")
 
 # Create an object
-capacities_objects(action="create", space_id="...", structure_id="...", title="My Note", content="# Hello")
+capacities_objects(action="create", structure_id="...", title="My Note", content="# Hello\n\nWorld")
+
+# Find-replace edit (like Edit tool)
+capacities_objects(action="update", object_id="...", old_string="World", new_string="Universe")
+
+# Replace all content
+capacities_objects(action="update", object_id="...", content="Completely new content")
 
 # Create a task
-capacities_tasks(action="create", space_id="...", title="Review PR", priority="high", due_date="2025-01-20")
+capacities_tasks(action="create", title="Review PR", priority="high", due_date="2025-01-20")
 
 # Complete a task
-capacities_tasks(action="complete", space_id="...", task_id="...")
+capacities_tasks(action="complete", task_id="...")
 
 # Add to daily note
-capacities_daily(action="note", space_id="...", text="Meeting notes...")
+capacities_daily(action="note", text="Meeting notes...")
 
-# Bulk create
-capacities_bulk(action="create", space_id="...", objects=[...])
+# Explore graph connections
+capacities_space(action="graph", object_id="...", depth=2)
 ```
 
 ## Object Model
