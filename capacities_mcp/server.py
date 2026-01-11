@@ -3,12 +3,15 @@ Capacities MCP Server
 
 Provides full access to Capacities.io for AI agents via MCP protocol.
 
-Features:
-- List and read all objects in a space
-- Search by title
-- Trace object graphs (1-3 levels deep)
-- Save weblinks and daily notes
-- View object relationships
+8 consolidated tools:
+- capacities_objects: CRUD operations on objects
+- capacities_tasks: Task management
+- capacities_space: Space info and graph traversal
+- capacities_daily: Daily notes and weblinks
+- capacities_collections: Collection membership
+- capacities_links: Link operations
+- capacities_bulk: Bulk operations
+- capacities_export: Export/import
 
 Usage:
     Set CAPACITIES_AUTH_TOKEN environment variable, then run:
@@ -108,13 +111,11 @@ def format_object(obj) -> str:
     if obj.tags:
         lines.append(f"- **Tags**: {', '.join(obj.tags)}")
 
-    # Add content preview
     content = obj.get_content_text()
     if content:
         preview = content[:500] + "..." if len(content) > 500 else content
         lines.append(f"\n### Content:\n{preview}")
 
-    # Add links
     linked_ids = obj.get_linked_object_ids()
     if linked_ids:
         lines.append(f"\n### Links to: {len(linked_ids)} objects")
@@ -126,818 +127,384 @@ def format_object(obj) -> str:
 async def list_tools() -> list[Tool]:
     """List available tools."""
     return [
+        # =================================================================
+        # OBJECTS TOOL
+        # =================================================================
         Tool(
-            name="capacities_list_spaces",
-            description="List all Capacities spaces you have access to",
-            inputSchema={
-                "type": "object",
-                "properties": {},
-                "required": [],
-            },
-        ),
-        Tool(
-            name="capacities_get_space_info",
-            description="Get detailed information about a space including object types (structures) and collections",
+            name="capacities_objects",
+            description="Object CRUD operations. Actions: create, get, get_many, update, delete, restore, list, search, search_content",
             inputSchema={
                 "type": "object",
                 "properties": {
+                    "action": {
+                        "type": "string",
+                        "enum": ["create", "get", "get_many", "update", "delete", "restore", "list", "search", "search_content"],
+                        "description": "Action to perform",
+                    },
                     "space_id": {
                         "type": "string",
-                        "description": "Space UUID",
+                        "description": "Space UUID (required for create, update, delete, restore, list, search, search_content)",
                     },
-                },
-                "required": ["space_id"],
-            },
-        ),
-        Tool(
-            name="capacities_list_objects",
-            description="List all objects in a space. Returns object IDs and titles. Use capacities_get_object to get full content.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "space_id": {
-                        "type": "string",
-                        "description": "Space UUID",
-                    },
-                    "structure_id": {
-                        "type": "string",
-                        "description": "Optional: Filter by object type (e.g., 'RootPage', 'RootDailyNote', 'MediaWebResource')",
-                    },
-                    "limit": {
-                        "type": "integer",
-                        "description": "Maximum number of objects to return (default: 50)",
-                        "default": 50,
-                    },
-                },
-                "required": ["space_id"],
-            },
-        ),
-        Tool(
-            name="capacities_get_object",
-            description="Get a single object with full content including all text blocks, code blocks, and links",
-            inputSchema={
-                "type": "object",
-                "properties": {
                     "object_id": {
                         "type": "string",
-                        "description": "Object UUID",
+                        "description": "Object UUID (for get, update, delete, restore)",
                     },
-                },
-                "required": ["object_id"],
-            },
-        ),
-        Tool(
-            name="capacities_get_objects",
-            description="Get multiple objects by their IDs with full content",
-            inputSchema={
-                "type": "object",
-                "properties": {
                     "object_ids": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "List of object UUIDs",
+                        "description": "Object UUIDs (for get_many)",
                     },
-                },
-                "required": ["object_ids"],
-            },
-        ),
-        Tool(
-            name="capacities_search",
-            description="Search for objects by title",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "space_id": {
+                    "structure_id": {
                         "type": "string",
-                        "description": "Space UUID",
+                        "description": "Object type ID (for create, or filter for list)",
+                    },
+                    "title": {
+                        "type": "string",
+                        "description": "Object title (for create, update)",
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "Markdown content - auto-parsed into blocks (for create, update)",
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Object description (for create, update)",
+                    },
+                    "tags": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Tag IDs (for create, update)",
                     },
                     "query": {
                         "type": "string",
-                        "description": "Search query (matches against titles)",
+                        "description": "Search query (for search, search_content)",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Max results (for list, search_content)",
+                        "default": 50,
                     },
                 },
-                "required": ["space_id", "query"],
+                "required": ["action"],
             },
         ),
+        # =================================================================
+        # TASKS TOOL
+        # =================================================================
         Tool(
-            name="capacities_trace_graph",
-            description="Trace the object graph starting from a given object. Follows links between objects up to a specified depth. Useful for understanding relationships and context.",
+            name="capacities_tasks",
+            description="Task management. Actions: create, list, pending, overdue, complete, uncomplete, update, delete",
             inputSchema={
                 "type": "object",
                 "properties": {
+                    "action": {
+                        "type": "string",
+                        "enum": ["create", "list", "pending", "overdue", "complete", "uncomplete", "update", "delete"],
+                        "description": "Action to perform",
+                    },
+                    "space_id": {
+                        "type": "string",
+                        "description": "Space UUID (required for all actions)",
+                    },
+                    "task_id": {
+                        "type": "string",
+                        "description": "Task UUID (for complete, uncomplete, update, delete)",
+                    },
+                    "title": {
+                        "type": "string",
+                        "description": "Task title (for create, update)",
+                    },
+                    "due_date": {
+                        "type": "string",
+                        "description": "Due date ISO format e.g. '2025-01-15' (for create, update)",
+                    },
+                    "priority": {
+                        "type": "string",
+                        "enum": ["high", "medium", "low"],
+                        "description": "Priority level (for create, update, list filter)",
+                    },
+                    "status": {
+                        "type": "string",
+                        "enum": ["not-started", "next-up", "done"],
+                        "description": "Status (for update, list filter)",
+                    },
+                    "notes": {
+                        "type": "string",
+                        "description": "Notes content (for create, update)",
+                    },
+                    "tags": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Tag IDs (for create, update)",
+                    },
+                },
+                "required": ["action", "space_id"],
+            },
+        ),
+        # =================================================================
+        # SPACE TOOL
+        # =================================================================
+        Tool(
+            name="capacities_space",
+            description="Space info and navigation. Actions: list, info, graph",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "enum": ["list", "info", "graph"],
+                        "description": "Action: list=all spaces, info=space structures, graph=trace object graph",
+                    },
+                    "space_id": {
+                        "type": "string",
+                        "description": "Space UUID (for info)",
+                    },
                     "object_id": {
                         "type": "string",
-                        "description": "Starting object UUID",
+                        "description": "Starting object UUID (for graph)",
                     },
                     "depth": {
                         "type": "integer",
-                        "description": "How many levels deep to trace (1-3, default: 2)",
+                        "description": "Graph traversal depth 1-3 (for graph)",
                         "default": 2,
                         "minimum": 1,
                         "maximum": 3,
                     },
                 },
-                "required": ["object_id"],
+                "required": ["action"],
             },
         ),
+        # =================================================================
+        # DAILY TOOL
+        # =================================================================
         Tool(
-            name="capacities_save_weblink",
-            description="Save a URL to Capacities with optional title, description, and tags",
+            name="capacities_daily",
+            description="Daily notes and weblinks. Actions: note, weblink",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "space_id": {
+                    "action": {
                         "type": "string",
-                        "description": "Space UUID",
+                        "enum": ["note", "weblink"],
+                        "description": "Action: note=add to daily note, weblink=save URL",
                     },
-                    "url": {
-                        "type": "string",
-                        "description": "URL to save",
-                    },
-                    "title": {
-                        "type": "string",
-                        "description": "Optional custom title",
-                    },
-                    "description": {
-                        "type": "string",
-                        "description": "Optional description",
-                    },
-                    "tags": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Optional tags (must match existing tags or will be created)",
-                    },
-                    "notes": {
-                        "type": "string",
-                        "description": "Optional markdown notes to add",
-                    },
-                },
-                "required": ["space_id", "url"],
-            },
-        ),
-        Tool(
-            name="capacities_add_to_daily_note",
-            description="Add text to today's daily note in a space",
-            inputSchema={
-                "type": "object",
-                "properties": {
                     "space_id": {
                         "type": "string",
                         "description": "Space UUID",
                     },
                     "text": {
                         "type": "string",
-                        "description": "Markdown text to add to daily note",
+                        "description": "Markdown text to add (for note)",
                     },
                     "no_timestamp": {
                         "type": "boolean",
-                        "description": "If true, don't add timestamp (default: false)",
+                        "description": "Skip timestamp (for note)",
                         "default": False,
                     },
-                },
-                "required": ["space_id", "text"],
-            },
-        ),
-        Tool(
-            name="capacities_create_object",
-            description="Create a new object (note, page, etc.) in a space. Content is AUTO-PARSED from markdown: # headings, ```code blocks```, - bullet lists, 1. numbered lists, **bold**, *italic*, > quotes, --- dividers. Use capacities_get_space_info first to get available structure_ids.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "space_id": {
+                    "url": {
                         "type": "string",
-                        "description": "Space UUID",
-                    },
-                    "structure_id": {
-                        "type": "string",
-                        "description": "Structure ID (object type) - get from capacities_get_space_info",
+                        "description": "URL to save (for weblink)",
                     },
                     "title": {
                         "type": "string",
-                        "description": "Object title",
-                    },
-                    "content": {
-                        "type": "string",
-                        "description": "Markdown content (auto-parsed into blocks: headings, code, lists, bold/italic, quotes)",
+                        "description": "Custom title (for weblink)",
                     },
                     "description": {
                         "type": "string",
-                        "description": "Optional description",
+                        "description": "Description (for weblink)",
                     },
                     "tags": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "Optional list of tag IDs",
-                    },
-                },
-                "required": ["space_id", "structure_id", "title"],
-            },
-        ),
-        Tool(
-            name="capacities_update_object",
-            description="Update an existing object's title, content, description, or tags. Content is AUTO-PARSED from markdown: # headings, ```code blocks```, - bullet lists, 1. numbered lists, **bold**, *italic*, > quotes, --- dividers.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "space_id": {
-                        "type": "string",
-                        "description": "Space UUID",
-                    },
-                    "object_id": {
-                        "type": "string",
-                        "description": "Object UUID to update",
-                    },
-                    "title": {
-                        "type": "string",
-                        "description": "New title (optional)",
-                    },
-                    "content": {
-                        "type": "string",
-                        "description": "Markdown content (auto-parsed, replaces existing)",
-                    },
-                    "description": {
-                        "type": "string",
-                        "description": "New description (optional)",
-                    },
-                    "tags": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "New tags list (optional)",
-                    },
-                },
-                "required": ["space_id", "object_id"],
-            },
-        ),
-        Tool(
-            name="capacities_delete_object",
-            description="Delete an object (moves to trash). Can be restored later.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "space_id": {
-                        "type": "string",
-                        "description": "Space UUID",
-                    },
-                    "object_id": {
-                        "type": "string",
-                        "description": "Object UUID to delete",
-                    },
-                },
-                "required": ["space_id", "object_id"],
-            },
-        ),
-        Tool(
-            name="capacities_restore_object",
-            description="Restore a deleted object from trash",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "space_id": {
-                        "type": "string",
-                        "description": "Space UUID",
-                    },
-                    "object_id": {
-                        "type": "string",
-                        "description": "Object UUID to restore",
-                    },
-                },
-                "required": ["space_id", "object_id"],
-            },
-        ),
-        # Task Tools
-        Tool(
-            name="capacities_create_task",
-            description="Create a new task in a space with optional due date, priority, and notes",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "space_id": {
-                        "type": "string",
-                        "description": "Space UUID",
-                    },
-                    "title": {
-                        "type": "string",
-                        "description": "Task title",
-                    },
-                    "due_date": {
-                        "type": "string",
-                        "description": "Optional due date (ISO format, e.g., '2025-01-15')",
-                    },
-                    "priority": {
-                        "type": "string",
-                        "enum": ["high", "medium", "low"],
-                        "description": "Optional priority level",
+                        "description": "Tags (for weblink)",
                     },
                     "notes": {
                         "type": "string",
-                        "description": "Optional notes content",
-                    },
-                    "tags": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Optional list of tag IDs",
+                        "description": "Markdown notes (for weblink)",
                     },
                 },
-                "required": ["space_id", "title"],
+                "required": ["action", "space_id"],
             },
         ),
+        # =================================================================
+        # COLLECTIONS TOOL
+        # =================================================================
         Tool(
-            name="capacities_list_tasks",
-            description="List all tasks in a space, optionally filtered by status or priority",
+            name="capacities_collections",
+            description="Collection membership. Actions: add, remove, list",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "space_id": {
+                    "action": {
                         "type": "string",
-                        "description": "Space UUID",
+                        "enum": ["add", "remove", "list"],
+                        "description": "Action to perform",
                     },
-                    "status": {
-                        "type": "string",
-                        "enum": ["not-started", "next-up", "done"],
-                        "description": "Optional status filter",
-                    },
-                    "priority": {
-                        "type": "string",
-                        "enum": ["high", "medium", "low"],
-                        "description": "Optional priority filter",
-                    },
-                },
-                "required": ["space_id"],
-            },
-        ),
-        Tool(
-            name="capacities_get_pending_tasks",
-            description="Get all non-completed tasks in a space",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "space_id": {
-                        "type": "string",
-                        "description": "Space UUID",
-                    },
-                },
-                "required": ["space_id"],
-            },
-        ),
-        Tool(
-            name="capacities_get_overdue_tasks",
-            description="Get all overdue tasks (past due date and not completed)",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "space_id": {
-                        "type": "string",
-                        "description": "Space UUID",
-                    },
-                },
-                "required": ["space_id"],
-            },
-        ),
-        Tool(
-            name="capacities_complete_task",
-            description="Mark a task as completed",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "space_id": {
-                        "type": "string",
-                        "description": "Space UUID",
-                    },
-                    "task_id": {
-                        "type": "string",
-                        "description": "Task UUID to complete",
-                    },
-                },
-                "required": ["space_id", "task_id"],
-            },
-        ),
-        Tool(
-            name="capacities_uncomplete_task",
-            description="Mark a completed task as not completed",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "space_id": {
-                        "type": "string",
-                        "description": "Space UUID",
-                    },
-                    "task_id": {
-                        "type": "string",
-                        "description": "Task UUID to uncomplete",
-                    },
-                },
-                "required": ["space_id", "task_id"],
-            },
-        ),
-        Tool(
-            name="capacities_update_task",
-            description="Update a task's title, status, priority, due date, notes, or tags",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "space_id": {
-                        "type": "string",
-                        "description": "Space UUID",
-                    },
-                    "task_id": {
-                        "type": "string",
-                        "description": "Task UUID to update",
-                    },
-                    "title": {
-                        "type": "string",
-                        "description": "New title (optional)",
-                    },
-                    "status": {
-                        "type": "string",
-                        "enum": ["not-started", "next-up", "done"],
-                        "description": "New status (optional)",
-                    },
-                    "priority": {
-                        "type": "string",
-                        "enum": ["high", "medium", "low"],
-                        "description": "New priority (optional)",
-                    },
-                    "due_date": {
-                        "type": "string",
-                        "description": "New due date as ISO string (optional)",
-                    },
-                    "notes": {
-                        "type": "string",
-                        "description": "New notes content (optional)",
-                    },
-                    "tags": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "New tags list (optional)",
-                    },
-                },
-                "required": ["space_id", "task_id"],
-            },
-        ),
-        # Collection Tools
-        Tool(
-            name="capacities_add_to_collection",
-            description="Add an object to a collection (database)",
-            inputSchema={
-                "type": "object",
-                "properties": {
                     "space_id": {
                         "type": "string",
                         "description": "Space UUID",
                     },
                     "object_id": {
                         "type": "string",
-                        "description": "Object UUID to add",
-                    },
-                    "collection_id": {
-                        "type": "string",
-                        "description": "Collection UUID to add to",
-                    },
-                },
-                "required": ["space_id", "object_id", "collection_id"],
-            },
-        ),
-        Tool(
-            name="capacities_remove_from_collection",
-            description="Remove an object from a collection (database)",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "space_id": {
-                        "type": "string",
-                        "description": "Space UUID",
-                    },
-                    "object_id": {
-                        "type": "string",
-                        "description": "Object UUID to remove",
-                    },
-                    "collection_id": {
-                        "type": "string",
-                        "description": "Collection UUID to remove from",
-                    },
-                },
-                "required": ["space_id", "object_id", "collection_id"],
-            },
-        ),
-        Tool(
-            name="capacities_get_collection_objects",
-            description="Get all objects in a collection",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "space_id": {
-                        "type": "string",
-                        "description": "Space UUID",
+                        "description": "Object UUID (for add, remove)",
                     },
                     "collection_id": {
                         "type": "string",
                         "description": "Collection UUID",
                     },
                 },
-                "required": ["space_id", "collection_id"],
+                "required": ["action", "space_id", "collection_id"],
             },
         ),
-        # Full-Text Search Tool
+        # =================================================================
+        # LINKS TOOL
+        # =================================================================
         Tool(
-            name="capacities_search_content",
-            description="Full-text search across all content in a space (searches inside objects, not just titles)",
+            name="capacities_links",
+            description="Link operations. Actions: get, backlinks, add, get_linked",
             inputSchema={
                 "type": "object",
                 "properties": {
+                    "action": {
+                        "type": "string",
+                        "enum": ["get", "backlinks", "add", "get_linked"],
+                        "description": "Action to perform",
+                    },
                     "space_id": {
                         "type": "string",
-                        "description": "Space UUID",
-                    },
-                    "query": {
-                        "type": "string",
-                        "description": "Search query",
-                    },
-                    "limit": {
-                        "type": "integer",
-                        "description": "Maximum results (default 50)",
-                        "default": 50,
-                    },
-                },
-                "required": ["space_id", "query"],
-            },
-        ),
-        # Link Tools
-        Tool(
-            name="capacities_get_links",
-            description="Get all links (references to other objects) from an object's content",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "object_id": {
-                        "type": "string",
-                        "description": "Object UUID to get links from",
-                    },
-                },
-                "required": ["object_id"],
-            },
-        ),
-        Tool(
-            name="capacities_get_backlinks",
-            description="Get all objects that link to a given object (find what references this)",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "space_id": {
-                        "type": "string",
-                        "description": "Space UUID",
+                        "description": "Space UUID (for backlinks, add)",
                     },
                     "object_id": {
                         "type": "string",
-                        "description": "Object UUID to find backlinks for",
-                    },
-                },
-                "required": ["space_id", "object_id"],
-            },
-        ),
-        Tool(
-            name="capacities_add_link",
-            description="Add a link from one object to another (creates inline reference or embedded block)",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "space_id": {
-                        "type": "string",
-                        "description": "Space UUID",
+                        "description": "Object UUID (for get, backlinks, get_linked)",
                     },
                     "source_object_id": {
                         "type": "string",
-                        "description": "Object UUID to add the link to",
+                        "description": "Source object UUID (for add)",
                     },
                     "target_object_id": {
                         "type": "string",
-                        "description": "Object UUID to link to",
+                        "description": "Target object UUID (for add)",
                     },
                     "display_text": {
                         "type": "string",
-                        "description": "Text to display for the link (defaults to target title)",
+                        "description": "Link display text (for add)",
                     },
                     "as_block": {
                         "type": "boolean",
-                        "description": "If true, embed as block; if false, add as inline link (default: false)",
+                        "description": "Embed as block vs inline (for add)",
                         "default": False,
                     },
                 },
-                "required": ["space_id", "source_object_id", "target_object_id"],
+                "required": ["action"],
             },
         ),
+        # =================================================================
+        # BULK TOOL
+        # =================================================================
         Tool(
-            name="capacities_get_linked_objects",
-            description="Get all objects that a given object links to (follow outgoing links)",
+            name="capacities_bulk",
+            description="Bulk operations. Actions: create, update, delete, clone",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "object_id": {
+                    "action": {
                         "type": "string",
-                        "description": "Object UUID to get linked objects from",
+                        "enum": ["create", "update", "delete", "clone"],
+                        "description": "Action to perform",
                     },
-                },
-                "required": ["object_id"],
-            },
-        ),
-        # Bulk Operation Tools
-        Tool(
-            name="capacities_bulk_create",
-            description="Create multiple objects in bulk. More efficient than creating one at a time.",
-            inputSchema={
-                "type": "object",
-                "properties": {
                     "space_id": {
                         "type": "string",
                         "description": "Space UUID",
                     },
                     "objects": {
                         "type": "array",
-                        "description": "List of objects to create",
+                        "description": "Objects to create (for create)",
                         "items": {
                             "type": "object",
                             "properties": {
-                                "structure_id": {
-                                    "type": "string",
-                                    "description": "Structure ID (object type)",
-                                },
-                                "title": {
-                                    "type": "string",
-                                    "description": "Object title",
-                                },
-                                "content": {
-                                    "type": "string",
-                                    "description": "Markdown content",
-                                },
-                                "description": {
-                                    "type": "string",
-                                    "description": "Object description",
-                                },
-                                "tags": {
-                                    "type": "array",
-                                    "items": {"type": "string"},
-                                    "description": "Tag IDs",
-                                },
+                                "structure_id": {"type": "string"},
+                                "title": {"type": "string"},
+                                "content": {"type": "string"},
+                                "description": {"type": "string"},
+                                "tags": {"type": "array", "items": {"type": "string"}},
                             },
                             "required": ["structure_id", "title"],
                         },
                     },
-                },
-                "required": ["space_id", "objects"],
-            },
-        ),
-        Tool(
-            name="capacities_bulk_update",
-            description="Update multiple objects in bulk",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "space_id": {
-                        "type": "string",
-                        "description": "Space UUID",
-                    },
                     "updates": {
                         "type": "array",
-                        "description": "List of updates to apply",
+                        "description": "Updates to apply (for update)",
                         "items": {
                             "type": "object",
                             "properties": {
-                                "object_id": {
-                                    "type": "string",
-                                    "description": "Object UUID to update",
-                                },
-                                "title": {
-                                    "type": "string",
-                                    "description": "New title",
-                                },
-                                "content": {
-                                    "type": "string",
-                                    "description": "New markdown content",
-                                },
-                                "description": {
-                                    "type": "string",
-                                    "description": "New description",
-                                },
-                                "tags": {
-                                    "type": "array",
-                                    "items": {"type": "string"},
-                                    "description": "New tags",
-                                },
+                                "object_id": {"type": "string"},
+                                "title": {"type": "string"},
+                                "content": {"type": "string"},
+                                "description": {"type": "string"},
+                                "tags": {"type": "array", "items": {"type": "string"}},
                             },
                             "required": ["object_id"],
                         },
                     },
-                },
-                "required": ["space_id", "updates"],
-            },
-        ),
-        Tool(
-            name="capacities_bulk_delete",
-            description="Delete multiple objects in bulk (moves to trash)",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "space_id": {
-                        "type": "string",
-                        "description": "Space UUID",
-                    },
                     "object_ids": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "List of object UUIDs to delete",
-                    },
-                },
-                "required": ["space_id", "object_ids"],
-            },
-        ),
-        Tool(
-            name="capacities_clone_objects",
-            description="Clone existing objects with new IDs",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "space_id": {
-                        "type": "string",
-                        "description": "Space UUID",
-                    },
-                    "object_ids": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "List of object UUIDs to clone",
+                        "description": "Object IDs (for delete, clone)",
                     },
                     "title_prefix": {
                         "type": "string",
-                        "description": "Prefix for cloned titles (default: 'Copy of ')",
+                        "description": "Clone title prefix (for clone)",
                         "default": "Copy of ",
                     },
                 },
-                "required": ["space_id", "object_ids"],
+                "required": ["action", "space_id"],
             },
         ),
-        # Export/Import Tools
+        # =================================================================
+        # EXPORT TOOL
+        # =================================================================
         Tool(
-            name="capacities_export_space",
-            description="Export all objects in a space to JSON format for backup",
+            name="capacities_export",
+            description="Export/import. Actions: space_json, markdown, import_json",
             inputSchema={
                 "type": "object",
                 "properties": {
+                    "action": {
+                        "type": "string",
+                        "enum": ["space_json", "markdown", "import_json"],
+                        "description": "Action to perform",
+                    },
                     "space_id": {
                         "type": "string",
                         "description": "Space UUID",
                     },
                     "include_content": {
                         "type": "boolean",
-                        "description": "Include full content (default: true)",
+                        "description": "Include full content (for space_json)",
                         "default": True,
-                    },
-                },
-                "required": ["space_id"],
-            },
-        ),
-        Tool(
-            name="capacities_export_markdown",
-            description="Export objects as markdown content",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "space_id": {
-                        "type": "string",
-                        "description": "Space UUID",
                     },
                     "object_ids": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "Specific object IDs (default: all objects)",
-                    },
-                },
-                "required": ["space_id"],
-            },
-        ),
-        Tool(
-            name="capacities_import_json",
-            description="Import objects from a JSON export backup",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "space_id": {
-                        "type": "string",
-                        "description": "Space UUID to import into",
+                        "description": "Specific object IDs (for markdown)",
                     },
                     "export_data": {
                         "type": "object",
-                        "description": "JSON export data from capacities_export_space",
+                        "description": "JSON export data (for import_json)",
                     },
                     "create_new_ids": {
                         "type": "boolean",
-                        "description": "Generate new IDs for imported objects (default: true)",
+                        "description": "Generate new IDs (for import_json)",
                         "default": True,
                     },
                     "skip_existing": {
                         "type": "boolean",
-                        "description": "Skip objects that already exist by title (default: true)",
+                        "description": "Skip existing by title (for import_json)",
                         "default": True,
                     },
                 },
-                "required": ["space_id", "export_data"],
+                "required": ["action", "space_id"],
             },
         ),
     ]
@@ -948,474 +515,365 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
     """Handle tool calls."""
     try:
         client = get_client()
+        action = arguments.get("action", "")
 
-        if name == "capacities_list_spaces":
-            spaces = client.get_spaces()
-            result = "# Your Capacities Spaces\n\n"
-            for space in spaces:
-                result += f"- **{space.title}** (`{space.id}`)\n"
-            return CallToolResult(content=[TextContent(type="text", text=result)])
-
-        elif name == "capacities_get_space_info":
-            space_id = arguments["space_id"]
-            structures = client.get_structures(space_id)
-            result = f"# Space Structures\n\n"
-            for struct in structures:
-                result += f"## {struct.title}\n"
-                result += f"- ID: `{struct.id}`\n"
-                result += f"- Plural: {struct.plural_name}\n"
-                if struct.collections:
-                    result += f"- Collections: {len(struct.collections)}\n"
-                result += "\n"
-            return CallToolResult(content=[TextContent(type="text", text=result)])
-
-        elif name == "capacities_list_objects":
-            space_id = arguments["space_id"]
-            structure_id = arguments.get("structure_id")
-            limit = arguments.get("limit", 50)
-
-            if structure_id:
-                objects = client.get_objects_by_structure(space_id, structure_id)
-            else:
-                objects = client.get_all_objects(space_id)
-
-            objects = objects[:limit]
-
-            result = f"# Objects ({len(objects)} shown)\n\n"
-            for obj in objects:
-                result += f"- **{obj.title}** (`{obj.id}`) - {obj.structure_id}\n"
-
-            return CallToolResult(content=[TextContent(type="text", text=result)])
-
-        elif name == "capacities_get_object":
-            object_id = arguments["object_id"]
-            obj = client.get_object(object_id)
-            if not obj:
-                return CallToolResult(
-                    content=[TextContent(type="text", text=f"Object not found: {object_id}")]
+        # =================================================================
+        # OBJECTS TOOL
+        # =================================================================
+        if name == "capacities_objects":
+            if action == "create":
+                obj = client.create_object(
+                    space_id=arguments["space_id"],
+                    structure_id=arguments["structure_id"],
+                    title=arguments["title"],
+                    content=arguments.get("content"),
+                    description=arguments.get("description"),
+                    tags=arguments.get("tags"),
                 )
-            result = format_object(obj)
-            return CallToolResult(content=[TextContent(type="text", text=result)])
+                return CallToolResult(content=[TextContent(type="text", text=f"Created object!\n\n{format_object(obj)}")])
 
-        elif name == "capacities_get_objects":
-            object_ids = arguments["object_ids"]
-            objects = client.get_objects_by_ids(object_ids)
-            result = f"# Objects ({len(objects)})\n\n"
-            for obj in objects:
-                result += format_object(obj) + "\n\n---\n\n"
-            return CallToolResult(content=[TextContent(type="text", text=result)])
+            elif action == "get":
+                obj = client.get_object(arguments["object_id"])
+                if not obj:
+                    return CallToolResult(content=[TextContent(type="text", text=f"Object not found: {arguments['object_id']}")])
+                return CallToolResult(content=[TextContent(type="text", text=format_object(obj))])
 
-        elif name == "capacities_search":
-            space_id = arguments["space_id"]
-            query = arguments["query"]
-            objects = client.search_by_title(space_id, query)
-            result = f"# Search Results for '{query}' ({len(objects)})\n\n"
-            for obj in objects:
-                result += f"- **{obj.title}** (`{obj.id}`) - {obj.structure_id}\n"
-            return CallToolResult(content=[TextContent(type="text", text=result)])
+            elif action == "get_many":
+                objects = client.get_objects_by_ids(arguments["object_ids"])
+                result = f"# Objects ({len(objects)})\n\n"
+                for obj in objects:
+                    result += format_object(obj) + "\n\n---\n\n"
+                return CallToolResult(content=[TextContent(type="text", text=result)])
 
-        elif name == "capacities_trace_graph":
-            object_id = arguments["object_id"]
-            depth = arguments.get("depth", 2)
-            summary = client.get_graph_summary(object_id, depth)
-
-            result = f"# Object Graph\n\n"
-            result += f"- **Total nodes**: {summary['total_nodes']}\n"
-            result += f"- **Max depth reached**: {summary['max_depth_reached']}\n\n"
-
-            result += "## Node Types\n"
-            for type_id, count in summary["type_counts"].items():
-                result += f"- {type_id}: {count}\n"
-
-            result += "\n## Nodes\n"
-            for node_id, info in summary["nodes"].items():
-                indent = "  " * info["depth"]
-                result += f"{indent}- **{info['title']}** (`{node_id[:8]}...`) [{info['type']}]\n"
-                if info["links"]:
-                    result += f"{indent}  Links to: {len(info['links'])} objects\n"
-
-            return CallToolResult(content=[TextContent(type="text", text=result)])
-
-        elif name == "capacities_save_weblink":
-            space_id = arguments["space_id"]
-            url = arguments["url"]
-            result = client.save_weblink(
-                space_id=space_id,
-                url=url,
-                title=arguments.get("title"),
-                description=arguments.get("description"),
-                tags=arguments.get("tags"),
-                md_text=arguments.get("notes"),
-            )
-            return CallToolResult(
-                content=[
-                    TextContent(
-                        type="text",
-                        text=f"Saved weblink: {result.get('title', url)} (ID: {result.get('id')})",
-                    )
-                ]
-            )
-
-        elif name == "capacities_add_to_daily_note":
-            space_id = arguments["space_id"]
-            text = arguments["text"]
-            no_timestamp = arguments.get("no_timestamp", False)
-            client.save_to_daily_note(space_id, text, no_timestamp)
-            return CallToolResult(
-                content=[TextContent(type="text", text="Added to daily note successfully")]
-            )
-
-        elif name == "capacities_create_object":
-            space_id = arguments["space_id"]
-            structure_id = arguments["structure_id"]
-            title = arguments["title"]
-            obj = client.create_object(
-                space_id=space_id,
-                structure_id=structure_id,
-                title=title,
-                content_text=arguments.get("content"),
-                description=arguments.get("description"),
-                tags=arguments.get("tags"),
-            )
-            result = f"Created object successfully!\n\n{format_object(obj)}"
-            return CallToolResult(content=[TextContent(type="text", text=result)])
-
-        elif name == "capacities_update_object":
-            space_id = arguments["space_id"]
-            object_id = arguments["object_id"]
-            obj = client.update_object(
-                space_id=space_id,
-                object_id=object_id,
-                title=arguments.get("title"),
-                content_text=arguments.get("content"),
-                description=arguments.get("description"),
-                tags=arguments.get("tags"),
-            )
-            result = f"Updated object successfully!\n\n{format_object(obj)}"
-            return CallToolResult(content=[TextContent(type="text", text=result)])
-
-        elif name == "capacities_delete_object":
-            space_id = arguments["space_id"]
-            object_id = arguments["object_id"]
-            success = client.delete_object(space_id, object_id)
-            if success:
-                return CallToolResult(
-                    content=[TextContent(type="text", text=f"Deleted object {object_id} successfully (moved to trash)")]
+            elif action == "update":
+                obj = client.update_object(
+                    space_id=arguments["space_id"],
+                    object_id=arguments["object_id"],
+                    title=arguments.get("title"),
+                    content=arguments.get("content"),
+                    description=arguments.get("description"),
+                    tags=arguments.get("tags"),
                 )
-            else:
-                return CallToolResult(
-                    content=[TextContent(type="text", text=f"Failed to delete object {object_id}")]
+                return CallToolResult(content=[TextContent(type="text", text=f"Updated object!\n\n{format_object(obj)}")])
+
+            elif action == "delete":
+                success = client.delete_object(arguments["space_id"], arguments["object_id"])
+                msg = "Deleted (moved to trash)" if success else "Delete failed"
+                return CallToolResult(content=[TextContent(type="text", text=msg)])
+
+            elif action == "restore":
+                obj = client.restore_object(arguments["space_id"], arguments["object_id"])
+                return CallToolResult(content=[TextContent(type="text", text=f"Restored!\n\n{format_object(obj)}")])
+
+            elif action == "list":
+                space_id = arguments["space_id"]
+                structure_id = arguments.get("structure_id")
+                limit = arguments.get("limit", 50)
+                if structure_id:
+                    objects = client.get_objects_by_structure(space_id, structure_id)
+                else:
+                    objects = client.get_all_objects(space_id)
+                objects = objects[:limit]
+                result = f"# Objects ({len(objects)})\n\n"
+                for obj in objects:
+                    result += f"- **{obj.title}** (`{obj.id}`) - {obj.structure_id}\n"
+                return CallToolResult(content=[TextContent(type="text", text=result)])
+
+            elif action == "search":
+                objects = client.search_by_title(arguments["space_id"], arguments["query"])
+                result = f"# Search: '{arguments['query']}' ({len(objects)})\n\n"
+                for obj in objects:
+                    result += f"- **{obj.title}** (`{obj.id}`) - {obj.structure_id}\n"
+                return CallToolResult(content=[TextContent(type="text", text=result)])
+
+            elif action == "search_content":
+                limit = arguments.get("limit", 50)
+                objects = client.search_content(arguments["space_id"], arguments["query"], limit)
+                result = f"# Content Search: '{arguments['query']}' ({len(objects)})\n\n"
+                for obj in objects:
+                    result += f"- **{obj.title}** (`{obj.id}`)\n"
+                return CallToolResult(content=[TextContent(type="text", text=result)])
+
+        # =================================================================
+        # TASKS TOOL
+        # =================================================================
+        elif name == "capacities_tasks":
+            space_id = arguments["space_id"]
+
+            if action == "create":
+                priority = TaskPriority(arguments["priority"]) if arguments.get("priority") else None
+                task = client.create_task(
+                    space_id=space_id,
+                    title=arguments["title"],
+                    due_date=arguments.get("due_date"),
+                    priority=priority,
+                    notes=arguments.get("notes"),
+                    tags=arguments.get("tags"),
                 )
+                return CallToolResult(content=[TextContent(type="text", text=f"Created task!\n\n{format_task(task)}")])
 
-        elif name == "capacities_restore_object":
-            space_id = arguments["space_id"]
-            object_id = arguments["object_id"]
-            obj = client.restore_object(space_id, object_id)
-            result = f"Restored object successfully!\n\n{format_object(obj)}"
-            return CallToolResult(content=[TextContent(type="text", text=result)])
+            elif action == "list":
+                status = TaskStatus(arguments["status"]) if arguments.get("status") else None
+                priority = TaskPriority(arguments["priority"]) if arguments.get("priority") else None
+                tasks = client.get_tasks(space_id, status=status, priority=priority)
+                result = f"# Tasks ({len(tasks)})\n\n"
+                for task in tasks:
+                    result += format_task(task) + "\n\n"
+                return CallToolResult(content=[TextContent(type="text", text=result)])
 
-        # Task Tool Handlers
-        elif name == "capacities_create_task":
-            space_id = arguments["space_id"]
-            title = arguments["title"]
-            priority = None
-            if arguments.get("priority"):
-                priority = TaskPriority(arguments["priority"])
-            task = client.create_task(
-                space_id=space_id,
-                title=title,
-                due_date=arguments.get("due_date"),
-                priority=priority,
-                notes=arguments.get("notes"),
-                tags=arguments.get("tags"),
-            )
-            result = f"Created task successfully!\n\n{format_task(task)}"
-            return CallToolResult(content=[TextContent(type="text", text=result)])
+            elif action == "pending":
+                tasks = client.get_pending_tasks(space_id)
+                result = f"# Pending Tasks ({len(tasks)})\n\n"
+                for task in tasks:
+                    result += format_task(task) + "\n\n"
+                return CallToolResult(content=[TextContent(type="text", text=result)])
 
-        elif name == "capacities_list_tasks":
-            space_id = arguments["space_id"]
-            status = None
-            priority = None
-            if arguments.get("status"):
-                status = TaskStatus(arguments["status"])
-            if arguments.get("priority"):
-                priority = TaskPriority(arguments["priority"])
-            tasks = client.get_tasks(space_id, status=status, priority=priority)
-            result = f"# Tasks ({len(tasks)})\n\n"
-            for task in tasks:
-                result += format_task(task) + "\n\n"
-            return CallToolResult(content=[TextContent(type="text", text=result)])
+            elif action == "overdue":
+                tasks = client.get_overdue_tasks(space_id)
+                result = f"# Overdue Tasks ({len(tasks)})\n\n"
+                if not tasks:
+                    result += "No overdue tasks!"
+                for task in tasks:
+                    result += format_task(task) + "\n\n"
+                return CallToolResult(content=[TextContent(type="text", text=result)])
 
-        elif name == "capacities_get_pending_tasks":
-            space_id = arguments["space_id"]
-            tasks = client.get_pending_tasks(space_id)
-            result = f"# Pending Tasks ({len(tasks)})\n\n"
-            for task in tasks:
-                result += format_task(task) + "\n\n"
-            return CallToolResult(content=[TextContent(type="text", text=result)])
+            elif action == "complete":
+                task = client.complete_task(space_id, arguments["task_id"])
+                return CallToolResult(content=[TextContent(type="text", text=f"Completed!\n\n{format_task(task)}")])
 
-        elif name == "capacities_get_overdue_tasks":
-            space_id = arguments["space_id"]
-            tasks = client.get_overdue_tasks(space_id)
-            result = f"# Overdue Tasks ({len(tasks)})\n\n"
-            if not tasks:
-                result += "No overdue tasks!"
-            for task in tasks:
-                result += format_task(task) + "\n\n"
-            return CallToolResult(content=[TextContent(type="text", text=result)])
+            elif action == "uncomplete":
+                task = client.uncomplete_task(space_id, arguments["task_id"])
+                return CallToolResult(content=[TextContent(type="text", text=f"Uncompleted!\n\n{format_task(task)}")])
 
-        elif name == "capacities_complete_task":
-            space_id = arguments["space_id"]
-            task_id = arguments["task_id"]
-            task = client.complete_task(space_id, task_id)
-            result = f"Task completed!\n\n{format_task(task)}"
-            return CallToolResult(content=[TextContent(type="text", text=result)])
+            elif action == "update":
+                status = TaskStatus(arguments["status"]) if arguments.get("status") else None
+                priority = TaskPriority(arguments["priority"]) if arguments.get("priority") else None
+                task = client.update_task(
+                    space_id=space_id,
+                    task_id=arguments["task_id"],
+                    title=arguments.get("title"),
+                    status=status,
+                    priority=priority,
+                    due_date=arguments.get("due_date"),
+                    notes=arguments.get("notes"),
+                    tags=arguments.get("tags"),
+                )
+                return CallToolResult(content=[TextContent(type="text", text=f"Updated!\n\n{format_task(task)}")])
 
-        elif name == "capacities_uncomplete_task":
-            space_id = arguments["space_id"]
-            task_id = arguments["task_id"]
-            task = client.uncomplete_task(space_id, task_id)
-            result = f"Task marked as not completed!\n\n{format_task(task)}"
-            return CallToolResult(content=[TextContent(type="text", text=result)])
+            elif action == "delete":
+                success = client.delete_task(space_id, arguments["task_id"])
+                msg = "Deleted (moved to trash)" if success else "Delete failed"
+                return CallToolResult(content=[TextContent(type="text", text=msg)])
 
-        elif name == "capacities_update_task":
-            space_id = arguments["space_id"]
-            task_id = arguments["task_id"]
-            status = None
-            priority = None
-            if arguments.get("status"):
-                status = TaskStatus(arguments["status"])
-            if arguments.get("priority"):
-                priority = TaskPriority(arguments["priority"])
-            task = client.update_task(
-                space_id=space_id,
-                task_id=task_id,
-                title=arguments.get("title"),
-                status=status,
-                priority=priority,
-                due_date=arguments.get("due_date"),
-                notes=arguments.get("notes"),
-                tags=arguments.get("tags"),
-            )
-            result = f"Task updated!\n\n{format_task(task)}"
-            return CallToolResult(content=[TextContent(type="text", text=result)])
+        # =================================================================
+        # SPACE TOOL
+        # =================================================================
+        elif name == "capacities_space":
+            if action == "list":
+                spaces = client.get_spaces()
+                result = "# Your Spaces\n\n"
+                for space in spaces:
+                    result += f"- **{space.title}** (`{space.id}`)\n"
+                return CallToolResult(content=[TextContent(type="text", text=result)])
 
-        # Collection Tool Handlers
-        elif name == "capacities_add_to_collection":
-            space_id = arguments["space_id"]
-            object_id = arguments["object_id"]
-            collection_id = arguments["collection_id"]
-            obj = client.add_to_collection(space_id, object_id, collection_id)
-            result = f"Added to collection!\n\n{format_object(obj)}"
-            return CallToolResult(content=[TextContent(type="text", text=result)])
-
-        elif name == "capacities_remove_from_collection":
-            space_id = arguments["space_id"]
-            object_id = arguments["object_id"]
-            collection_id = arguments["collection_id"]
-            obj = client.remove_from_collection(space_id, object_id, collection_id)
-            result = f"Removed from collection!\n\n{format_object(obj)}"
-            return CallToolResult(content=[TextContent(type="text", text=result)])
-
-        elif name == "capacities_get_collection_objects":
-            space_id = arguments["space_id"]
-            collection_id = arguments["collection_id"]
-            objects = client.get_collection_objects(space_id, collection_id)
-            result = f"# Collection Objects ({len(objects)})\n\n"
-            for obj in objects:
-                result += f"- **{obj.title}** (`{obj.id}`) - {obj.structure_id}\n"
-            return CallToolResult(content=[TextContent(type="text", text=result)])
-
-        # Full-Text Search Handler
-        elif name == "capacities_search_content":
-            space_id = arguments["space_id"]
-            query = arguments["query"]
-            limit = arguments.get("limit", 50)
-            objects = client.search_content(space_id, query, limit)
-            result = f"# Content Search: '{query}' ({len(objects)} results)\n\n"
-            for obj in objects:
-                result += f"- **{obj.title}** (`{obj.id}`) - {obj.structure_id}\n"
-                # Show preview of matching content
-                content = obj.get_content_text()
-                if content and query.lower() in content.lower():
-                    # Find the match context
-                    idx = content.lower().find(query.lower())
-                    start = max(0, idx - 30)
-                    end = min(len(content), idx + len(query) + 30)
-                    preview = content[start:end]
-                    if start > 0:
-                        preview = "..." + preview
-                    if end < len(content):
-                        preview = preview + "..."
-                    result += f"  > {preview}\n"
-            return CallToolResult(content=[TextContent(type="text", text=result)])
-
-        # Link Tool Handlers
-        elif name == "capacities_get_links":
-            object_id = arguments["object_id"]
-            links = client.get_links(object_id)
-            result = f"# Links from Object ({len(links)})\n\n"
-            if not links:
-                result += "No links found in this object's content."
-            for link in links:
-                result += f"- **{link['display_text'] or '(embedded)'}** → `{link['target_id']}`\n"
-                result += f"  - Type: {link['type']}\n"
-                if link['target_structure_id']:
-                    result += f"  - Structure: {link['target_structure_id']}\n"
-            return CallToolResult(content=[TextContent(type="text", text=result)])
-
-        elif name == "capacities_get_backlinks":
-            space_id = arguments["space_id"]
-            object_id = arguments["object_id"]
-            backlinks = client.get_backlinks(space_id, object_id)
-            result = f"# Backlinks ({len(backlinks)} objects link to this)\n\n"
-            if not backlinks:
-                result += "No objects link to this one."
-            for obj in backlinks:
-                result += f"- **{obj.title}** (`{obj.id}`) - {obj.structure_id}\n"
-            return CallToolResult(content=[TextContent(type="text", text=result)])
-
-        elif name == "capacities_add_link":
-            space_id = arguments["space_id"]
-            source_id = arguments["source_object_id"]
-            target_id = arguments["target_object_id"]
-            display_text = arguments.get("display_text")
-            as_block = arguments.get("as_block", False)
-            obj = client.add_link(
-                space_id=space_id,
-                source_object_id=source_id,
-                target_object_id=target_id,
-                display_text=display_text,
-                as_block=as_block,
-            )
-            link_type = "embedded block" if as_block else "inline link"
-            result = f"Added {link_type} successfully!\n\n{format_object(obj)}"
-            return CallToolResult(content=[TextContent(type="text", text=result)])
-
-        elif name == "capacities_get_linked_objects":
-            object_id = arguments["object_id"]
-            linked = client.get_linked_objects(object_id)
-            result = f"# Linked Objects ({len(linked)})\n\n"
-            if not linked:
-                result += "This object doesn't link to any other objects."
-            for obj in linked:
-                result += f"- **{obj.title}** (`{obj.id}`) - {obj.structure_id}\n"
-            return CallToolResult(content=[TextContent(type="text", text=result)])
-
-        # Bulk Operation Handlers
-        elif name == "capacities_bulk_create":
-            space_id = arguments["space_id"]
-            objects = arguments["objects"]
-            created = client.bulk_create(space_id, objects)
-            result = f"# Bulk Create Results\n\n"
-            result += f"**Created {len(created)} objects**\n\n"
-            for obj in created:
-                result += f"- **{obj.title}** (`{obj.id}`)\n"
-            return CallToolResult(content=[TextContent(type="text", text=result)])
-
-        elif name == "capacities_bulk_update":
-            space_id = arguments["space_id"]
-            updates = arguments["updates"]
-            updated = client.bulk_update(space_id, updates)
-            result = f"# Bulk Update Results\n\n"
-            result += f"**Updated {len(updated)} objects**\n\n"
-            for obj in updated:
-                result += f"- **{obj.title}** (`{obj.id}`)\n"
-            return CallToolResult(content=[TextContent(type="text", text=result)])
-
-        elif name == "capacities_bulk_delete":
-            space_id = arguments["space_id"]
-            object_ids = arguments["object_ids"]
-            result_data = client.bulk_delete(space_id, object_ids)
-            result = f"# Bulk Delete Results\n\n"
-            result += f"- **Deleted**: {result_data['success_count']}\n"
-            result += f"- **Failed**: {result_data['failed_count']}\n"
-            if result_data['failed_ids']:
-                result += f"\n**Failed IDs**: {', '.join(result_data['failed_ids'])}\n"
-            return CallToolResult(content=[TextContent(type="text", text=result)])
-
-        elif name == "capacities_clone_objects":
-            space_id = arguments["space_id"]
-            object_ids = arguments["object_ids"]
-            title_prefix = arguments.get("title_prefix", "Copy of ")
-            cloned = client.clone_objects(space_id, object_ids, title_prefix)
-            result = f"# Clone Results\n\n"
-            result += f"**Cloned {len(cloned)} objects**\n\n"
-            for obj in cloned:
-                result += f"- **{obj.title}** (`{obj.id}`)\n"
-            return CallToolResult(content=[TextContent(type="text", text=result)])
-
-        # Export/Import Handlers
-        elif name == "capacities_export_space":
-            space_id = arguments["space_id"]
-            include_content = arguments.get("include_content", True)
-            export_data = client.export_space_json(space_id, include_content)
-            result = f"# Space Export\n\n"
-            result += f"- **Space ID**: {export_data['space_id']}\n"
-            result += f"- **Exported At**: {export_data['exported_at']}\n"
-            result += f"- **Object Count**: {export_data['object_count']}\n"
-            result += f"- **Structures**: {len(export_data['structures'])}\n\n"
-            result += "## Export Data\n\n"
-            result += "```json\n"
-            result += json.dumps(export_data, indent=2)[:10000]  # Truncate for display
-            if len(json.dumps(export_data)) > 10000:
-                result += "\n... (truncated)"
-            result += "\n```"
-            return CallToolResult(content=[TextContent(type="text", text=result)])
-
-        elif name == "capacities_export_markdown":
-            space_id = arguments["space_id"]
-            object_ids = arguments.get("object_ids")
-            exports = client.export_objects_to_markdown(space_id, object_ids)
-            result = f"# Markdown Export ({len(exports)} files)\n\n"
-            for exp in exports[:20]:  # Show first 20
-                result += f"## {exp['filename']}\n\n"
-                result += f"```markdown\n{exp['content'][:500]}"
-                if len(exp['content']) > 500:
-                    result += "\n... (truncated)"
-                result += "\n```\n\n"
-            if len(exports) > 20:
-                result += f"\n... and {len(exports) - 20} more files"
-            return CallToolResult(content=[TextContent(type="text", text=result)])
-
-        elif name == "capacities_import_json":
-            space_id = arguments["space_id"]
-            export_data = arguments["export_data"]
-            create_new_ids = arguments.get("create_new_ids", True)
-            skip_existing = arguments.get("skip_existing", True)
-            import_result = client.import_from_json(
-                space_id, export_data, create_new_ids, skip_existing
-            )
-            result = f"# Import Results\n\n"
-            result += f"- **Imported**: {import_result['imported_count']}\n"
-            result += f"- **Skipped**: {import_result['skipped_count']}\n"
-            result += f"- **Failed**: {import_result['failed_count']}\n"
-            if import_result['details']:
-                result += "\n## Details\n\n"
-                for detail in import_result['details'][:50]:
-                    status_icon = {"imported": "+", "skipped": "~", "failed": "-"}.get(
-                        detail['status'], "?"
-                    )
-                    result += f"[{status_icon}] {detail['title']}"
-                    if detail.get('reason'):
-                        result += f" ({detail['reason']})"
+            elif action == "info":
+                structures = client.get_structures(arguments["space_id"])
+                result = "# Space Structures\n\n"
+                for struct in structures:
+                    result += f"## {struct.title}\n"
+                    result += f"- ID: `{struct.id}`\n"
+                    result += f"- Plural: {struct.plural_name}\n"
+                    if struct.collections:
+                        result += f"- Collections: {len(struct.collections)}\n"
                     result += "\n"
-            return CallToolResult(content=[TextContent(type="text", text=result)])
+                return CallToolResult(content=[TextContent(type="text", text=result)])
 
-        else:
-            return CallToolResult(
-                content=[TextContent(type="text", text=f"Unknown tool: {name}")]
-            )
+            elif action == "graph":
+                depth = arguments.get("depth", 2)
+                summary = client.get_graph_summary(arguments["object_id"], depth)
+                result = f"# Object Graph\n\n"
+                result += f"- **Total nodes**: {summary['total_nodes']}\n"
+                result += f"- **Max depth**: {summary['max_depth_reached']}\n\n"
+                result += "## Node Types\n"
+                for type_id, count in summary["type_counts"].items():
+                    result += f"- {type_id}: {count}\n"
+                result += "\n## Nodes\n"
+                for node_id, info in summary["nodes"].items():
+                    indent = "  " * info["depth"]
+                    result += f"{indent}- **{info['title']}** (`{node_id[:8]}...`)\n"
+                return CallToolResult(content=[TextContent(type="text", text=result)])
+
+        # =================================================================
+        # DAILY TOOL
+        # =================================================================
+        elif name == "capacities_daily":
+            space_id = arguments["space_id"]
+
+            if action == "note":
+                client.save_to_daily_note(space_id, arguments["text"], arguments.get("no_timestamp", False))
+                return CallToolResult(content=[TextContent(type="text", text="Added to daily note!")])
+
+            elif action == "weblink":
+                result = client.save_weblink(
+                    space_id=space_id,
+                    url=arguments["url"],
+                    title=arguments.get("title"),
+                    description=arguments.get("description"),
+                    tags=arguments.get("tags"),
+                    md_text=arguments.get("notes"),
+                )
+                return CallToolResult(content=[TextContent(type="text", text=f"Saved weblink: {result.get('title', arguments['url'])}")])
+
+        # =================================================================
+        # COLLECTIONS TOOL
+        # =================================================================
+        elif name == "capacities_collections":
+            space_id = arguments["space_id"]
+            collection_id = arguments["collection_id"]
+
+            if action == "add":
+                obj = client.add_to_collection(space_id, arguments["object_id"], collection_id)
+                return CallToolResult(content=[TextContent(type="text", text=f"Added to collection!\n\n{format_object(obj)}")])
+
+            elif action == "remove":
+                obj = client.remove_from_collection(space_id, arguments["object_id"], collection_id)
+                return CallToolResult(content=[TextContent(type="text", text=f"Removed from collection!\n\n{format_object(obj)}")])
+
+            elif action == "list":
+                objects = client.get_collection_objects(space_id, collection_id)
+                result = f"# Collection Objects ({len(objects)})\n\n"
+                for obj in objects:
+                    result += f"- **{obj.title}** (`{obj.id}`)\n"
+                return CallToolResult(content=[TextContent(type="text", text=result)])
+
+        # =================================================================
+        # LINKS TOOL
+        # =================================================================
+        elif name == "capacities_links":
+            if action == "get":
+                links = client.get_links(arguments["object_id"])
+                result = f"# Links ({len(links)})\n\n"
+                if not links:
+                    result += "No links found."
+                for link in links:
+                    result += f"- **{link['display_text'] or '(embedded)'}** → `{link['target_id']}`\n"
+                return CallToolResult(content=[TextContent(type="text", text=result)])
+
+            elif action == "backlinks":
+                backlinks = client.get_backlinks(arguments["space_id"], arguments["object_id"])
+                result = f"# Backlinks ({len(backlinks)})\n\n"
+                if not backlinks:
+                    result += "No backlinks found."
+                for obj in backlinks:
+                    result += f"- **{obj.title}** (`{obj.id}`)\n"
+                return CallToolResult(content=[TextContent(type="text", text=result)])
+
+            elif action == "add":
+                obj = client.add_link(
+                    space_id=arguments["space_id"],
+                    source_object_id=arguments["source_object_id"],
+                    target_object_id=arguments["target_object_id"],
+                    display_text=arguments.get("display_text"),
+                    as_block=arguments.get("as_block", False),
+                )
+                link_type = "block" if arguments.get("as_block") else "inline"
+                return CallToolResult(content=[TextContent(type="text", text=f"Added {link_type} link!\n\n{format_object(obj)}")])
+
+            elif action == "get_linked":
+                linked = client.get_linked_objects(arguments["object_id"])
+                result = f"# Linked Objects ({len(linked)})\n\n"
+                if not linked:
+                    result += "No linked objects."
+                for obj in linked:
+                    result += f"- **{obj.title}** (`{obj.id}`)\n"
+                return CallToolResult(content=[TextContent(type="text", text=result)])
+
+        # =================================================================
+        # BULK TOOL
+        # =================================================================
+        elif name == "capacities_bulk":
+            space_id = arguments["space_id"]
+
+            if action == "create":
+                created = client.bulk_create(space_id, arguments["objects"])
+                result = f"# Bulk Create: {len(created)} objects\n\n"
+                for obj in created:
+                    result += f"- **{obj.title}** (`{obj.id}`)\n"
+                return CallToolResult(content=[TextContent(type="text", text=result)])
+
+            elif action == "update":
+                updated = client.bulk_update(space_id, arguments["updates"])
+                result = f"# Bulk Update: {len(updated)} objects\n\n"
+                for obj in updated:
+                    result += f"- **{obj.title}** (`{obj.id}`)\n"
+                return CallToolResult(content=[TextContent(type="text", text=result)])
+
+            elif action == "delete":
+                result_data = client.bulk_delete(space_id, arguments["object_ids"])
+                result = f"# Bulk Delete\n\n"
+                result += f"- Deleted: {result_data['success_count']}\n"
+                result += f"- Failed: {result_data['failed_count']}\n"
+                return CallToolResult(content=[TextContent(type="text", text=result)])
+
+            elif action == "clone":
+                prefix = arguments.get("title_prefix", "Copy of ")
+                cloned = client.clone_objects(space_id, arguments["object_ids"], prefix)
+                result = f"# Cloned: {len(cloned)} objects\n\n"
+                for obj in cloned:
+                    result += f"- **{obj.title}** (`{obj.id}`)\n"
+                return CallToolResult(content=[TextContent(type="text", text=result)])
+
+        # =================================================================
+        # EXPORT TOOL
+        # =================================================================
+        elif name == "capacities_export":
+            space_id = arguments["space_id"]
+
+            if action == "space_json":
+                include_content = arguments.get("include_content", True)
+                export_data = client.export_space_json(space_id, include_content)
+                result = f"# Export\n\n"
+                result += f"- Objects: {export_data['object_count']}\n"
+                result += f"- Structures: {len(export_data['structures'])}\n\n"
+                result += "```json\n"
+                result += json.dumps(export_data, indent=2)[:10000]
+                if len(json.dumps(export_data)) > 10000:
+                    result += "\n... (truncated)"
+                result += "\n```"
+                return CallToolResult(content=[TextContent(type="text", text=result)])
+
+            elif action == "markdown":
+                exports = client.export_objects_to_markdown(space_id, arguments.get("object_ids"))
+                result = f"# Markdown Export ({len(exports)} files)\n\n"
+                for exp in exports[:20]:
+                    result += f"## {exp['filename']}\n\n```markdown\n{exp['content'][:500]}"
+                    if len(exp['content']) > 500:
+                        result += "\n..."
+                    result += "\n```\n\n"
+                if len(exports) > 20:
+                    result += f"... and {len(exports) - 20} more"
+                return CallToolResult(content=[TextContent(type="text", text=result)])
+
+            elif action == "import_json":
+                import_result = client.import_from_json(
+                    space_id,
+                    arguments["export_data"],
+                    arguments.get("create_new_ids", True),
+                    arguments.get("skip_existing", True),
+                )
+                result = f"# Import Results\n\n"
+                result += f"- Imported: {import_result['imported_count']}\n"
+                result += f"- Skipped: {import_result['skipped_count']}\n"
+                result += f"- Failed: {import_result['failed_count']}\n"
+                return CallToolResult(content=[TextContent(type="text", text=result)])
+
+        return CallToolResult(content=[TextContent(type="text", text=f"Unknown: {name}/{action}")])
 
     except CapacitiesError as e:
-        return CallToolResult(
-            content=[TextContent(type="text", text=f"Error: {e.message}")]
-        )
+        return CallToolResult(content=[TextContent(type="text", text=f"Error: {e.message}")])
     except Exception as e:
         logger.exception("Unexpected error")
-        return CallToolResult(
-            content=[TextContent(type="text", text=f"Unexpected error: {str(e)}")]
-        )
+        return CallToolResult(content=[TextContent(type="text", text=f"Error: {str(e)}")])
 
 
 async def main():
