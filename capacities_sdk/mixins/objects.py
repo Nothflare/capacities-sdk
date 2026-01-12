@@ -114,18 +114,19 @@ class ObjectsMixin:
     # Search
     # =========================================================================
 
-    def search_by_title(self, space_id: str, query: str) -> List[Object]:
+    def search_by_title(self, space_id: str, query: str, limit: int = 50) -> List[Object]:
         """
-        Search objects by title using lookup API.
+        Search objects by title.
 
         Args:
             space_id: Space UUID
-            query: Search query
+            query: Search query (case-insensitive substring match)
+            limit: Maximum results to return
 
         Returns:
             List of matching Object instances
         """
-        results = self.lookup(space_id, query)
+        results = self.search_by_title_local(space_id, query, limit=limit)
         if not results:
             return []
 

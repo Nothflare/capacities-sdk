@@ -1,17 +1,18 @@
 """
 Capacities MCP Server (FastMCP)
 
-8 action-based tools for AI agents to access Capacities.io.
+7 action-based tools for AI agents to access Capacities.io (Portal API only).
+All responses are JSON for token efficiency.
 
 Environment Variables:
-    CAPACITIES_AUTH_TOKEN (required): API token from Capacities settings
+    CAPACITIES_AUTH_TOKEN (required): JWT token from Capacities web app
     CAPACITIES_SPACE_ID (optional): Default space UUID - if set, space_id is optional in all tools
 """
 
 import os
 import json
 import sys
-from typing import Any, Optional, List
+from typing import Any, Dict, Optional, List
 
 from fastmcp import FastMCP
 from fastmcp.dependencies import Depends
@@ -19,6 +20,7 @@ from fastmcp.dependencies import Depends
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from capacities_sdk import CapacitiesClient, CapacitiesError, TaskStatus, TaskPriority
+from capacities_sdk.exceptions import AuthenticationError, NotFoundError, RateLimitError, ValidationError
 
 # =============================================================================
 # Configuration
@@ -27,7 +29,6 @@ from capacities_sdk import CapacitiesClient, CapacitiesError, TaskStatus, TaskPr
 AUTH_TOKEN = os.environ.get("CAPACITIES_AUTH_TOKEN")
 DEFAULT_SPACE_ID = os.environ.get("CAPACITIES_SPACE_ID")
 
-# Build server instructions based on configuration
 _BASE_INSTRUCTIONS = """
 ## What is Capacities?
 
@@ -38,6 +39,13 @@ Capacities is a graph-based Personal Knowledge Management (PKM) app. Core concep
 - **Links**: Objects connect via inline links or embedded blocks. Backlinks show what references an object.
 - **Collections**: Groups of objects (like databases/folders).
 - **Content**: Markdown auto-parsed into blocks (headings, code, lists, quotes).
+
+## Response Format
+
+All responses are JSON:
+- Write ops: `{"ok": true, "id": "..."}` or `{"error": {"code": "...", ...}}`
+- Read ops: Arrays or objects directly, no wrapper
+- Types shown as names (e.g., "Note") not UUIDs
 """
 
 if DEFAULT_SPACE_ID:
@@ -45,8 +53,6 @@ if DEFAULT_SPACE_ID:
 ## Configuration
 
 Default space: `{DEFAULT_SPACE_ID}` (auto-used, no need to specify space_id)
-
-Start exploring with capacities_space or capacities_objects.
 """
 else:
     INSTRUCTIONS = _BASE_INSTRUCTIONS + """
@@ -58,18 +64,45 @@ No default space. First call capacities_space(action="list") to get space_id.
 mcp = FastMCP(name="capacities", instructions=INSTRUCTIONS)
 
 # =============================================================================
-# Dependencies
+# State & Dependencies
 # =============================================================================
 
 _client: CapacitiesClient = None
+_type_map: Dict[str, str] = {}  # UUID -> name
+_name_map: Dict[str, str] = {}  # name (lowercase) -> UUID
 
 def get_client() -> CapacitiesClient:
-    """Get or create the Capacities client."""
-    global _client
+    """Get or create the Capacities client. Caches type maps on first connect."""
+    global _client, _type_map, _name_map
     if _client is None:
         if not AUTH_TOKEN:
             raise ValueError("CAPACITIES_AUTH_TOKEN environment variable is required")
         _client = CapacitiesClient(auth_token=AUTH_TOKEN)
+        # Cache type maps on first connect
+        if DEFAULT_SPACE_ID and not _type_map:
+            try:
+                structures = _client.get_structures(DEFAULT_SPACE_ID)
+                for s in structures:
+                    _type_map[s.id] = s.title
+                    _name_map[s.title.lower()] = s.id
+                # Add built-in types (both directions)
+                builtins = {
+                    "RootPage": "Page",
+                    "RootTask": "Task",
+                    "RootDailyNote": "DailyNote",
+                    "RootTag": "Tag",
+                    "RootDatabase": "Collection",
+                    "RootCollection": "Collection",
+                    "RootStructure": "Structure",
+                    "MediaWebResource": "Weblink",
+                    "MediaImage": "Image",
+                    "MediaPDF": "PDF",
+                }
+                _type_map.update(builtins)
+                for uuid, name in builtins.items():
+                    _name_map[name.lower()] = uuid
+            except Exception:
+                pass  # Silently fail - will use as-is
     return _client
 
 def get_space_id(space_id: Optional[str] = None) -> str:
@@ -79,29 +112,75 @@ def get_space_id(space_id: Optional[str] = None) -> str:
         raise ValueError("space_id is required (no default configured)")
     return sid
 
+def type_name(uuid: str) -> str:
+    """Convert structure UUID to readable name."""
+    return _type_map.get(uuid, uuid[:8] if len(uuid) > 8 else uuid)
+
+def type_id(name_or_uuid: str) -> str:
+    """Convert structure name to UUID. Pass-through if already UUID."""
+    if not name_or_uuid:
+        return name_or_uuid
+    # Check if it's a name (case-insensitive lookup)
+    resolved = _name_map.get(name_or_uuid.lower())
+    if resolved:
+        return resolved
+    # Already a UUID or unknown name - pass through
+    return name_or_uuid
+
 # =============================================================================
-# Formatters
+# JSON Response Helpers
 # =============================================================================
 
-def format_task(task) -> str:
-    icons = {TaskStatus.NOT_STARTED: "[ ]", TaskStatus.NEXT_UP: "[>]", TaskStatus.DONE: "[x]"}
-    lines = [f"{icons.get(task.status, '[ ]')} **{task.title}**", f"- ID: `{task.id}`", f"- Status: {task.status.value}"]
+def ok(id: str = None, ids: List[str] = None, **kw) -> str:
+    """Success response for write operations."""
+    d = {"ok": True, **kw}
+    if id:
+        d["id"] = id
+    if ids:
+        d["ids"] = ids
+    return json.dumps(d)
+
+def err(code: str, **kw) -> str:
+    """Error response."""
+    return json.dumps({"error": {"code": code, **kw}})
+
+def to_object_summary(obj) -> Dict[str, Any]:
+    """Object summary for lists."""
+    return {"id": obj.id, "title": obj.title, "type": type_name(obj.structure_id)}
+
+def to_object_full(obj) -> Dict[str, Any]:
+    """Full object for single get."""
+    d = to_object_summary(obj)
+    d["content"] = obj.get_content_text()
+    # Add custom properties if present
+    if hasattr(obj, 'description') and obj.description:
+        d.setdefault("props", {})["description"] = obj.description
+    return d
+
+def to_task(task) -> Dict[str, Any]:
+    """Task for lists."""
+    d = {"id": task.id, "title": task.title, "status": task.status.value}
     if task.priority:
-        lines.append(f"- Priority: {task.priority.value}")
+        d["priority"] = task.priority.value
     if task.due_date:
-        lines.append(f"- Due: {task.due_date.strftime('%Y-%m-%d')}{' (OVERDUE)' if task.is_overdue() else ''}")
-    if task.notes:
-        lines.append(f"- Notes: {task.notes[:100]}...")
-    return "\n".join(lines)
+        d["due"] = task.due_date.strftime("%Y-%m-%d")
+        d["overdue"] = task.is_overdue()
+    return d
 
-def format_object(obj) -> str:
-    lines = [f"## {obj.title}", f"- ID: `{obj.id}`", f"- Type: {obj.structure_id}"]
-    if obj.description:
-        lines.append(f"- Description: {obj.description}")
-    content = obj.get_content_text()
-    if content:
-        lines.append(f"\n### Content:\n{content[:500]}{'...' if len(content) > 500 else ''}")
-    return "\n".join(lines)
+def handle_error(e: Exception) -> str:
+    """Convert exception to error response."""
+    if isinstance(e, NotFoundError):
+        return err("NOT_FOUND", message=str(e))
+    elif isinstance(e, AuthenticationError):
+        return err("AUTH_EXPIRED")
+    elif isinstance(e, RateLimitError):
+        return err("RATE_LIMIT", retry_after=getattr(e, 'retry_after', 60))
+    elif isinstance(e, ValidationError):
+        return err("VALIDATION", message=str(e))
+    elif isinstance(e, ValueError):
+        return err("VALIDATION", message=str(e))
+    else:
+        return err("UNKNOWN", message=str(e))
 
 # =============================================================================
 # Tools
@@ -141,59 +220,62 @@ def capacities_objects(
     try:
         if action == "get":
             obj = client.get_object(object_id)
-            return format_object(obj) if obj else f"Not found: {object_id}"
+            if not obj:
+                return err("NOT_FOUND", id=object_id)
+            return json.dumps(to_object_full(obj))
 
         if action == "get_many":
             objects = client.get_objects_by_ids(object_ids or [])
-            return "\n\n---\n\n".join(format_object(o) for o in objects)
+            return json.dumps([to_object_full(o) for o in objects])
 
         sid = get_space_id(space_id)
 
         if action == "create":
-            obj = client.create_object(sid, structure_id, title, content, description, tags)
-            return f"Created!\n\n{format_object(obj)}"
+            sid_resolved = type_id(structure_id)  # Allow "Note" instead of UUID
+            obj = client.create_object(sid, sid_resolved, title, content, description, tags)
+            return ok(id=obj.id)
 
         if action == "update":
-            # If old_string/new_string provided, do find-replace on content
             final_content = content
             if old_string is not None:
                 obj = client.get_object(object_id)
                 if not obj:
-                    return f"Not found: {object_id}"
+                    return err("NOT_FOUND", id=object_id)
                 current_content = obj.get_content_text() or ""
                 if old_string not in current_content:
-                    return f"Error: old_string not found in content. Use get first to see current content."
+                    return err("VALIDATION", message="old_string not found in content")
                 final_content = current_content.replace(old_string, new_string or "", 1)
-            obj = client.update_object(sid, object_id, title, final_content, description, tags)
-            return f"Updated!\n\n{format_object(obj)}"
+            client.update_object(sid, object_id, title, final_content, description, tags)
+            return ok(id=object_id)
 
         if action == "delete":
-            ok = client.delete_object(sid, object_id)
-            return "Deleted (moved to trash)" if ok else "Delete failed"
+            client.delete_object(sid, object_id)
+            return ok()
 
         if action == "restore":
-            obj = client.restore_object(sid, object_id)
-            return f"Restored!\n\n{format_object(obj)}"
+            client.restore_object(sid, object_id)
+            return ok(id=object_id)
 
         if action == "list":
             if structure_id:
-                objects = client.get_objects_by_structure(sid, structure_id)
+                sid_resolved = type_id(structure_id)  # Allow "Note" instead of UUID
+                objects = client.get_objects_by_structure(sid, sid_resolved)
             else:
                 objects = client.get_all_objects(sid)
             objects = objects[:limit]
-            return f"# Objects ({len(objects)})\n\n" + "\n".join(f"- **{o.title}** (`{o.id}`) - {o.structure_id}" for o in objects)
+            return json.dumps([to_object_summary(o) for o in objects])
 
         if action == "search":
-            objects = client.search_by_title(sid, query)
-            return f"# Search: '{query}' ({len(objects)})\n\n" + "\n".join(f"- **{o.title}** (`{o.id}`)" for o in objects)
+            objects = client.search_by_title(sid, query, limit=limit)
+            return json.dumps([to_object_summary(o) for o in objects])
 
         if action == "search_content":
             objects = client.search_content(sid, query, limit)
-            return f"# Content Search: '{query}' ({len(objects)})\n\n" + "\n".join(f"- **{o.title}** (`{o.id}`)" for o in objects)
+            return json.dumps([to_object_summary(o) for o in objects])
 
-        return f"Unknown action: {action}"
+        return err("VALIDATION", message=f"Unknown action: {action}")
     except Exception as e:
-        return f"Error: {e}"
+        return handle_error(e)
 
 
 @mcp.tool
@@ -229,39 +311,39 @@ def capacities_tasks(
 
         if action == "create":
             task = client.create_task(sid, title, due_date, pri, notes, tags)
-            return f"Created!\n\n{format_task(task)}"
+            return ok(id=task.id)
 
         if action == "list":
             tasks = client.get_tasks(sid, status=sta, priority=pri)
-            return f"# Tasks ({len(tasks)})\n\n" + "\n\n".join(format_task(t) for t in tasks)
+            return json.dumps([to_task(t) for t in tasks])
 
         if action == "pending":
             tasks = client.get_pending_tasks(sid)
-            return f"# Pending ({len(tasks)})\n\n" + "\n\n".join(format_task(t) for t in tasks)
+            return json.dumps([to_task(t) for t in tasks])
 
         if action == "overdue":
             tasks = client.get_overdue_tasks(sid)
-            return f"# Overdue ({len(tasks)})\n\n" + ("\n\n".join(format_task(t) for t in tasks) or "None!")
+            return json.dumps([to_task(t) for t in tasks])
 
         if action == "complete":
-            task = client.complete_task(sid, task_id)
-            return f"Completed!\n\n{format_task(task)}"
+            client.complete_task(sid, task_id)
+            return ok()
 
         if action == "uncomplete":
-            task = client.uncomplete_task(sid, task_id)
-            return f"Uncompleted!\n\n{format_task(task)}"
+            client.uncomplete_task(sid, task_id)
+            return ok()
 
         if action == "update":
-            task = client.update_task(sid, task_id, title, sta, pri, due_date, notes, tags)
-            return f"Updated!\n\n{format_task(task)}"
+            client.update_task(sid, task_id, title, sta, pri, due_date, notes, tags)
+            return ok(id=task_id)
 
         if action == "delete":
-            ok = client.delete_task(sid, task_id)
-            return "Deleted" if ok else "Delete failed"
+            client.delete_task(sid, task_id)
+            return ok()
 
-        return f"Unknown action: {action}"
+        return err("VALIDATION", message=f"Unknown action: {action}")
     except Exception as e:
-        return f"Error: {e}"
+        return handle_error(e)
 
 
 @mcp.tool
@@ -283,62 +365,27 @@ def capacities_space(
     try:
         if action == "list":
             spaces = client.get_spaces()
-            return "# Spaces\n\n" + "\n".join(f"- **{s.title}** (`{s.id}`)" for s in spaces)
+            return json.dumps([{"id": s.id, "title": s.title} for s in spaces])
 
         if action == "info":
             sid = get_space_id(space_id)
-            structs = client.get_structures(sid)
-            lines = ["# Structures\n"]
-            for s in structs:
-                lines.append(f"## {s.title}\n- ID: `{s.id}`\n- Plural: {s.plural_name}\n")
-            return "\n".join(lines)
+            info = client.get_space_info(sid)
+            return json.dumps({
+                "structures": [{"id": s["id"], "name": s["title"]} for s in info.get("structures", [])],
+                "collections": [{"id": c["id"], "name": c["title"]} for c in info.get("collections", [])]
+            })
 
         if action == "graph":
             summary = client.get_graph_summary(object_id, depth)
-            result = f"# Graph\n- Nodes: {summary['total_nodes']}\n- Max depth: {summary['max_depth_reached']}\n\n## Nodes\n"
-            for nid, info in summary["nodes"].items():
-                result += f"{'  ' * info['depth']}- **{info['title']}** (`{nid[:8]}...`)\n"
-            return result
+            nodes = [
+                {"id": nid, "title": info["title"], "depth": info["depth"]}
+                for nid, info in summary["nodes"].items()
+            ]
+            return json.dumps({"root": object_id, "nodes": nodes, "depth": summary["max_depth_reached"]})
 
-        return f"Unknown action: {action}"
+        return err("VALIDATION", message=f"Unknown action: {action}")
     except Exception as e:
-        return f"Error: {e}"
-
-
-@mcp.tool
-def capacities_daily(
-    action: str,
-    space_id: Optional[str] = None,
-    text: Optional[str] = None,
-    no_timestamp: bool = False,
-    url: Optional[str] = None,
-    title: Optional[str] = None,
-    description: Optional[str] = None,
-    tags: Optional[List[str]] = None,
-    notes: Optional[str] = None,
-    client: CapacitiesClient = Depends(get_client),
-) -> str:
-    """
-    Quick capture to daily notes and weblinks.
-
-    Actions:
-    - note: Append text (markdown) to today's daily note. Set no_timestamp=true to skip timestamp.
-    - weblink: Save a URL. Optional: title, description, tags, notes.
-    """
-    try:
-        sid = get_space_id(space_id)
-
-        if action == "note":
-            client.save_to_daily_note(sid, text, no_timestamp)
-            return "Added to daily note!"
-
-        if action == "weblink":
-            result = client.save_weblink(sid, url, title, description, tags, notes)
-            return f"Saved weblink: {result.get('title', url)}"
-
-        return f"Unknown action: {action}"
-    except Exception as e:
-        return f"Error: {e}"
+        return handle_error(e)
 
 
 @mcp.tool
@@ -361,20 +408,20 @@ def capacities_collections(
         sid = get_space_id(space_id)
 
         if action == "add":
-            obj = client.add_to_collection(sid, object_id, collection_id)
-            return f"Added!\n\n{format_object(obj)}"
+            client.add_to_collection(sid, object_id, collection_id)
+            return ok()
 
         if action == "remove":
-            obj = client.remove_from_collection(sid, object_id, collection_id)
-            return f"Removed!\n\n{format_object(obj)}"
+            client.remove_from_collection(sid, object_id, collection_id)
+            return ok()
 
         if action == "list":
             objects = client.get_collection_objects(sid, collection_id)
-            return f"# Collection ({len(objects)})\n\n" + "\n".join(f"- **{o.title}** (`{o.id}`)" for o in objects)
+            return json.dumps([to_object_summary(o) for o in objects])
 
-        return f"Unknown action: {action}"
+        return err("VALIDATION", message=f"Unknown action: {action}")
     except Exception as e:
-        return f"Error: {e}"
+        return handle_error(e)
 
 
 @mcp.tool
@@ -400,25 +447,28 @@ def capacities_links(
     try:
         if action == "get":
             links = client.get_links(object_id)
-            return f"# Links ({len(links)})\n\n" + "\n".join(f"- {l['display_text'] or '(embed)'} → `{l['target_id']}`" for l in links)
+            return json.dumps([
+                {"target": l["target_id"], "text": l.get("display_text"), "block": l.get("is_block", False)}
+                for l in links
+            ])
 
         if action == "get_linked":
             objects = client.get_linked_objects(object_id)
-            return f"# Linked ({len(objects)})\n\n" + "\n".join(f"- **{o.title}** (`{o.id}`)" for o in objects)
+            return json.dumps([to_object_summary(o) for o in objects])
 
         sid = get_space_id(space_id)
 
         if action == "backlinks":
             objects = client.get_backlinks(sid, object_id)
-            return f"# Backlinks ({len(objects)})\n\n" + "\n".join(f"- **{o.title}** (`{o.id}`)" for o in objects)
+            return json.dumps([to_object_summary(o) for o in objects])
 
         if action == "add":
-            obj = client.add_link(sid, source_object_id, target_object_id, display_text, as_block)
-            return f"Added {'block' if as_block else 'inline'} link!\n\n{format_object(obj)}"
+            client.add_link(sid, source_object_id, target_object_id, display_text, as_block)
+            return ok()
 
-        return f"Unknown action: {action}"
+        return err("VALIDATION", message=f"Unknown action: {action}")
     except Exception as e:
-        return f"Error: {e}"
+        return handle_error(e)
 
 
 @mcp.tool
@@ -445,23 +495,28 @@ def capacities_bulk(
 
         if action == "create":
             created = client.bulk_create(sid, objects or [])
-            return f"# Created {len(created)}\n\n" + "\n".join(f"- **{o.title}** (`{o.id}`)" for o in created)
+            return ok(ids=[o.id for o in created], count=len(created))
 
         if action == "update":
             updated = client.bulk_update(sid, updates or [])
-            return f"# Updated {len(updated)}\n\n" + "\n".join(f"- **{o.title}** (`{o.id}`)" for o in updated)
+            return ok(ids=[o.id for o in updated], count=len(updated))
 
         if action == "delete":
             result = client.bulk_delete(sid, object_ids or [])
-            return f"Deleted: {result['success_count']}, Failed: {result['failed_count']}"
+            failed_ids = result.get("failed_ids", [])
+            return json.dumps({
+                "ok": result["failed_count"] == 0,
+                "deleted": result["success_count"],
+                "failed": failed_ids
+            })
 
         if action == "clone":
             cloned = client.clone_objects(sid, object_ids or [], title_prefix)
-            return f"# Cloned {len(cloned)}\n\n" + "\n".join(f"- **{o.title}** (`{o.id}`)" for o in cloned)
+            return ok(ids=[o.id for o in cloned], count=len(cloned))
 
-        return f"Unknown action: {action}"
+        return err("VALIDATION", message=f"Unknown action: {action}")
     except Exception as e:
-        return f"Error: {e}"
+        return handle_error(e)
 
 
 @mcp.tool
@@ -488,24 +543,31 @@ def capacities_export(
 
         if action == "space_json":
             data = client.export_space_json(sid, include_content)
-            result = f"# Export\n- Objects: {data['object_count']}\n\n```json\n"
-            result += json.dumps(data, indent=2)[:10000]
-            return result + "\n```"
+            return json.dumps({
+                "count": data["object_count"],
+                "structures": len(data.get("structures", [])),
+                "json": json.dumps(data)
+            })
 
         if action == "markdown":
             exports = client.export_objects_to_markdown(sid, object_ids)
-            result = f"# Markdown ({len(exports)} files)\n\n"
-            for e in exports[:20]:
-                result += f"## {e['filename']}\n```markdown\n{e['content'][:500]}\n```\n\n"
-            return result
+            return json.dumps([
+                {"filename": e["filename"], "content": e["content"]}
+                for e in exports
+            ])
 
         if action == "import_json":
             result = client.import_from_json(sid, export_data or {}, create_new_ids, skip_existing)
-            return f"Imported: {result['imported_count']}, Skipped: {result['skipped_count']}, Failed: {result['failed_count']}"
+            return json.dumps({
+                "ok": result["failed_count"] == 0,
+                "imported": result["imported_count"],
+                "skipped": result["skipped_count"],
+                "failed": result.get("failed_ids", [])
+            })
 
-        return f"Unknown action: {action}"
+        return err("VALIDATION", message=f"Unknown action: {action}")
     except Exception as e:
-        return f"Error: {e}"
+        return handle_error(e)
 
 
 if __name__ == "__main__":

@@ -22,7 +22,7 @@ from .mixins import (
     BulkMixin,
     ExportMixin,
     GraphMixin,
-    OfficialAPIMixin,
+    SpacesMixin,
 )
 
 
@@ -34,7 +34,7 @@ class CapacitiesClient(
     BulkMixin,
     ExportMixin,
     GraphMixin,
-    OfficialAPIMixin,
+    SpacesMixin,
 ):
     """
     Client for Capacities internal Portal API.
@@ -49,8 +49,7 @@ class CapacitiesClient(
         timeout: Request timeout in seconds
     """
 
-    PORTAL_BASE_URL = "https://portal.capacities.io"
-    PUBLIC_API_BASE_URL = "https://api.capacities.io"
+    BASE_URL = "https://portal.capacities.io"
 
     def __init__(
         self,
@@ -61,13 +60,13 @@ class CapacitiesClient(
     ):
         self.auth_token = auth_token
         self.app_version = app_version
-        self.base_url = base_url or self.PORTAL_BASE_URL
+        self.base_url = base_url or self.BASE_URL
         self.timeout = timeout
         self._session = requests.Session()
         self._setup_session()
 
     def _setup_session(self):
-        """Configure session headers."""
+        """Configure session headers for Portal API."""
         token = self.auth_token
         if not token.startswith("Bearer "):
             token = f"Bearer {token}"
@@ -87,15 +86,9 @@ class CapacitiesClient(
         endpoint: str,
         params: Dict[str, Any] = None,
         json: Dict[str, Any] = None,
-        use_public_api: bool = False,
     ) -> Dict[str, Any]:
-        """Make an API request."""
-        base = self.PUBLIC_API_BASE_URL if use_public_api else self.base_url
-        url = urljoin(base + "/", endpoint.lstrip("/"))
-
-        headers = {}
-        if use_public_api:
-            headers["Authorization"] = self._session.headers.get("auth-token", "")
+        """Make a Portal API request."""
+        url = urljoin(self.base_url + "/", endpoint.lstrip("/"))
 
         try:
             response = self._session.request(
@@ -104,7 +97,6 @@ class CapacitiesClient(
                 params=params,
                 json=json,
                 timeout=self.timeout,
-                headers=headers if use_public_api else None,
             )
         except requests.RequestException as e:
             raise CapacitiesError(f"Request failed: {e}")

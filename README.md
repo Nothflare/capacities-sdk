@@ -14,30 +14,37 @@ Unofficial Python SDK and MCP server for [Capacities.io](https://capacities.io) 
 - **Bulk Operations** - Create, update, delete, clone multiple objects efficiently
 - **Export/Import** - Backup to JSON, export to Markdown, restore from backup
 - **Graph Traversal** - Trace object connections (1-3 levels deep)
-- **MCP Server** - 8 action-based tools with FastMCP, auto space_id support
+- **MCP Server** - 7 action-based tools with FastMCP, auto space_id support
+- **Portal API Only** - Single JWT token for all operations, no public API dependency
 
 ## Installation
+
+Using [uv](https://docs.astral.sh/uv/) (recommended):
+
+```bash
+uv sync
+```
+
+Or with pip:
 
 ```bash
 pip install -e .
 ```
 
-Or just install dependencies:
-
-```bash
-pip install -r requirements.txt
-```
-
 ## Authentication
 
-Get your auth token from:
-1. **Desktop App**: Settings > Capacities API > Generate Token
-2. **Web App**: The JWT token from the web session (advanced)
+This SDK uses the **Portal API** which requires a JWT session token. Get it from:
+
+1. **Web App** (recommended): Open https://app.capacities.io, then from browser DevTools:
+   - Application → Local Storage → `auth-token`, OR
+   - Network tab → any request → `auth-token` header
+
+The token looks like: `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6...`
 
 Set the environment variable:
 
 ```bash
-export CAPACITIES_AUTH_TOKEN="your-token-here"
+export CAPACITIES_AUTH_TOKEN="eyJhbG..."
 ```
 
 ## SDK Usage
@@ -319,11 +326,29 @@ Add to your `claude_desktop_config.json`:
 {
   "mcpServers": {
     "capacities": {
-      "command": "python",
-      "args": ["-m", "capacities_mcp.server"],
+      "command": "uv",
+      "args": ["run", "--directory", "/path/to/capacities-rev", "python", "-m", "capacities_mcp.server"],
       "env": {
         "CAPACITIES_AUTH_TOKEN": "your-token-here",
         "CAPACITIES_SPACE_ID": "your-space-uuid (optional - auto-fills space_id in all tools)"
+      }
+    }
+  }
+}
+```
+
+Or without uv:
+
+```json
+{
+  "mcpServers": {
+    "capacities": {
+      "command": "python",
+      "args": ["-m", "capacities_mcp.server"],
+      "cwd": "/path/to/capacities-rev",
+      "env": {
+        "CAPACITIES_AUTH_TOKEN": "your-token-here",
+        "CAPACITIES_SPACE_ID": "your-space-uuid (optional)"
       }
     }
   }
@@ -339,11 +364,38 @@ Add to your `claude_desktop_config.json`:
 | `capacities_objects` | create, get, get_many, update, delete, restore, list, search, search_content | Object CRUD operations |
 | `capacities_tasks` | create, list, pending, overdue, complete, uncomplete, update, delete | Task management |
 | `capacities_space` | list, info, graph | Space info and navigation |
-| `capacities_daily` | note, weblink | Daily notes and weblinks |
 | `capacities_collections` | add, remove, list | Collection membership |
 | `capacities_links` | get, backlinks, add, get_linked | Link operations |
 | `capacities_bulk` | create, update, delete, clone | Bulk operations |
 | `capacities_export` | space_json, markdown, import_json | Export/import |
+
+### Response Format
+
+All responses are **token-efficient JSON**:
+
+```json
+// Write operations - minimal confirmation
+{"ok": true, "id": "343e24b1-..."}
+
+// Read operations - data directly, no wrapper
+[{"id": "...", "title": "My Note", "type": "Note"}]
+
+// Errors - typed codes
+{"error": {"code": "NOT_FOUND", "id": "..."}}
+```
+
+### Type Name Mapping
+
+Use readable names instead of UUIDs for `structure_id`:
+
+```python
+# These are equivalent:
+capacities_objects(action="create", structure_id="Note", title="My Note")
+capacities_objects(action="create", structure_id="02df2623-...", title="My Note")
+
+# Works for list filtering too:
+capacities_objects(action="list", structure_id="Task")
+```
 
 ### Example Usage
 
@@ -354,8 +406,8 @@ capacities_space(action="list")
 # Get space structures (object types)
 capacities_space(action="info")
 
-# Create an object
-capacities_objects(action="create", structure_id="...", title="My Note", content="# Hello\n\nWorld")
+# Create an object (use type name or UUID)
+capacities_objects(action="create", structure_id="Note", title="My Note", content="# Hello\n\nWorld")
 
 # Find-replace edit (like Edit tool)
 capacities_objects(action="update", object_id="...", old_string="World", new_string="Universe")
@@ -368,9 +420,6 @@ capacities_tasks(action="create", title="Review PR", priority="high", due_date="
 
 # Complete a task
 capacities_tasks(action="complete", task_id="...")
-
-# Add to daily note
-capacities_daily(action="note", text="Meeting notes...")
 
 # Explore graph connections
 capacities_space(action="graph", object_id="...", depth=2)
@@ -432,17 +481,47 @@ task.is_overdue()    # bool
 task.is_due_today()  # bool
 ```
 
+## Project Structure
+
+```
+capacities-rev/
+├── capacities_sdk/          # Python SDK
+│   ├── client.py            # Main client (inherits from mixins)
+│   ├── mixins/              # Feature-specific mixins
+│   │   ├── objects.py       # CRUD operations
+│   │   ├── tasks.py         # Task management
+│   │   ├── links.py         # Link operations
+│   │   ├── collections.py   # Collection membership
+│   │   ├── bulk.py          # Bulk operations
+│   │   ├── export.py        # Export/import
+│   │   ├── graph.py         # Graph traversal
+│   │   └── official.py      # Official API endpoints
+│   ├── models.py            # Data models
+│   └── blocks.py            # Markdown parsing
+├── capacities_mcp/          # MCP server
+│   └── server.py            # FastMCP server (8 tools)
+├── tests/                   # Test files
+│   ├── test_tasks.py
+│   ├── test_blocks.py
+│   ├── test_links.py
+│   ├── test_collections_search.py
+│   └── test_bulk_export.py
+├── pyproject.toml           # Project config
+└── uv.lock                  # Dependency lock
+```
+
 ## Testing
 
-Run all tests:
+Run tests with pytest:
 
 ```bash
-export CAPACITIES_AUTH_TOKEN="your-token"
-python capacities_sdk/test_tasks.py
-python capacities_sdk/test_blocks.py
-python capacities_sdk/test_collections_search.py
-python capacities_sdk/test_links.py
-python capacities_sdk/test_bulk_export.py
+uv run pytest
+```
+
+Or run individual test files:
+
+```bash
+uv run pytest tests/test_tasks.py -v
 ```
 
 ## SDK Summary
@@ -451,13 +530,12 @@ python capacities_sdk/test_bulk_export.py
 |----------|-------------|----------|
 | Objects | 11 | `capacities_objects` (9 actions) |
 | Tasks | 12 | `capacities_tasks` (8 actions) |
-| Space | 3 | `capacities_space` (3 actions) |
-| Daily | 2 | `capacities_daily` (2 actions) |
+| Space | 4 | `capacities_space` (3 actions) |
 | Collections | 4 | `capacities_collections` (3 actions) |
 | Links | 4 | `capacities_links` (4 actions) |
 | Bulk | 5 | `capacities_bulk` (4 actions) |
 | Export | 3 | `capacities_export` (3 actions) |
-| **Total** | **44** | **8 tools, 36 actions** |
+| **Total** | **43** | **7 tools, 34 actions** |
 
 ## License
 

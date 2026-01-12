@@ -7,7 +7,7 @@ from .collections import CollectionsMixin
 from .bulk import BulkMixin
 from .export import ExportMixin
 from .graph import GraphMixin
-from .official import OfficialAPIMixin
+from .spaces import SpacesMixin
 
 __all__ = [
     "ObjectsMixin",
@@ -17,5 +17,5 @@ __all__ = [
     "BulkMixin",
     "ExportMixin",
     "GraphMixin",
-    "OfficialAPIMixin",
+    "SpacesMixin",
 ]
