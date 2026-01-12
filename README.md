@@ -78,12 +78,7 @@ note = client.create_object(
 
 This is **bold** and *italic* text.
 
-## Code Example
-
-```python
-def hello():
-    print("Hello World")
-```
+> A blockquote
 
 - Bullet point 1
 - Bullet point 2
@@ -91,12 +86,14 @@ def hello():
 1. Numbered item
 2. Another item
 
----
+## Code Example
 
-> A blockquote
-"""
-)
+```python
+def hello():
+    print("Hello World")
 ```
+
+---
 
 Supported markdown:
 - `# Headings` (levels 1-6)
